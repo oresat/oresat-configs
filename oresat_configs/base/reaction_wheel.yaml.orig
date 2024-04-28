@@ -22,50 +22,85 @@ objects:
         description: system error bitmask
         access_type: ro
 
+<<<<<<< HEAD
+
   - index: 0x4001
     name: motor
+=======
+  - index: 0x4001
+    name:  motor_vel_current
+>>>>>>> master
     description: reaction wheel motor vel/current
     object_type: record
     subindexes:
       - subindex: 0x1
+<<<<<<< HEAD
         name: velocity
+=======
+        name: motor_vel
+>>>>>>> master
         data_type: float32
         description: motor velocity
         access_type: ro
         unit: rev/s
 
       - subindex: 0x2
+<<<<<<< HEAD
         name: current
+=======
+        name: motor_current
+>>>>>>> master
         data_type: float32
         description: motor current
         access_type: ro
         unit: A
 
+<<<<<<< HEAD
+
   - index: 0x4002
     name: bus
+=======
+  - index: 0x4002
+    name:  bus_volt_current
+>>>>>>> master
     description: reaction wheel DC bus voltage/current
     object_type: record
     subindexes:
       - subindex: 0x1
+<<<<<<< HEAD
         name: voltage
+=======
+        name: bus_voltage
+>>>>>>> master
         data_type: float32
         description: bus voltage
         access_type: ro
         unit: V
 
       - subindex: 0x2
+<<<<<<< HEAD
         name: current
+=======
+        name: bus_current
+>>>>>>> master
         data_type: float32
         description: bus current
         access_type: ro
         unit: A
 
+<<<<<<< HEAD
+
   - index: 0x4003
     name: temperature
+=======
+  - index: 0x4003
+    name:  temp
+>>>>>>> master
     description: reaction wheel controller temperatures
     object_type: record
     subindexes:
       - subindex: 0x1
+<<<<<<< HEAD
         name: sensor_1
         data_type: int16
         description: temperature sensor 1 temp
@@ -89,56 +124,118 @@ objects:
 
   - index: 0x4004
     name: requested
+=======
+        name: temp_1
+        data_type: int16
+        description: temperature sensor 1 temp
+        access_type: ro
+        unit: cC
+
+      - subindex: 0x2
+        name: temp_2
+        data_type: int16
+        description: temperature sensor 2 temp
+        access_type: ro
+        unit: cC
+
+      - subindex: 0x3
+        name: temp_3
+        data_type: int16
+        description: temperature sensor 3 temp
+        access_type: ro
+        unit: cC
+
+  - index: 0x4004
+    name: requested_state
+>>>>>>> master
     description: reaction wheel requested state
     object_type: record
     subindexes:
       - subindex: 0x1
+<<<<<<< HEAD
         name: state
+=======
+        name: req_state
+>>>>>>> master
         data_type: uint8
         description: requested state
         access_type: rw
 
+<<<<<<< HEAD
+
   - index: 0x4005
     name: signals
+=======
+  - index: 0x4005
+    name: setpoint
+>>>>>>> master
     description: reaction wheel setpoints
     object_type: record
     subindexes:
       - subindex: 0x1
+<<<<<<< HEAD
         name: setpoint
+=======
+        name: setpoint_1
+>>>>>>> master
         data_type: float32
         description: setpoint 1
         access_type: rw
 
       - subindex: 0x2
+<<<<<<< HEAD
         name: reserved_feedforward
+=======
+        name: setpoint_2
+>>>>>>> master
         data_type: float32
         description: setpoint 2 (e.g. feedforward)
         access_type: rw
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> master
   - index: 0x4006
     name: reserved
     description: reaction wheel config params - reserved
     object_type: record
     subindexes:
       - subindex: 0x1
+<<<<<<< HEAD
         name: subindex_1
+=======
+        name: reserved_1
+>>>>>>> master
         data_type: float32
         description: reserved 1
         access_type: rw
 
       - subindex: 0x2
+<<<<<<< HEAD
         name: subindex_2
+=======
+        name: reserved_2
+>>>>>>> master
         data_type: float32
         description: reserved 2
         access_type: rw
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> master
   - index: 0x4007
     name: reboot
     description: reaction wheel reboot request
     object_type: record
     subindexes:
       - subindex: 0x1
+<<<<<<< HEAD
         name: request
+=======
+        name: reboot_request
+>>>>>>> master
         data_type: uint8
         description: write 1 to reboot
         access_type: rw
@@ -153,19 +250,37 @@ tpdos:
 
   - num: 2
     fields: 
+<<<<<<< HEAD
       - [motor, velocity]
       - [motor, current]
+=======
+      - [motor_vel_current, motor_vel]
+      - [motor_vel_current, motor_current]
+>>>>>>> master
     event_timer_ms: 100
 
   - num: 3
     fields: 
+<<<<<<< HEAD
       - [bus, voltage]
       - [bus, current]
+=======
+      - [bus_volt_current, bus_voltage]
+      - [bus_volt_current, bus_current]
+>>>>>>> master
     event_timer_ms: 100
       
   - num: 4
     fields: 
+<<<<<<< HEAD
       - [temperature, sensor_1]
       - [temperature, sensor_2]
       - [temperature, sensor_3]
     event_timer_ms: 100
+
+=======
+      - [temp, temp_1]
+      - [temp, temp_2]
+      - [temp, temp_3]
+    event_timer_ms: 100
+>>>>>>> master
