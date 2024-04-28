@@ -26,7 +26,9 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         type=lambda x: x.lower().removeprefix("oresat"),
         help="oresat mission, defaults to %(default)s",
     )
-    parser.add_argument("card", help="card name; c3, battery, solar, adcs, or reaction_wheel")
+    parser.add_argument(
+        "card", help="card name; c3, battery, solar, adcs, reaction_wheel, or diode_test"
+    )
     parser.add_argument("-d", "--dir-path", default=".", help='output directory path, default: "."')
     return parser
 
@@ -195,6 +197,8 @@ def attr_lines(od: canopen.ObjectDictionary, index: int) -> list[str]:
             line += f"0x{obj.default:X},"
         elif obj.data_type == canopen.objectdictionary.datatypes.BOOLEAN:
             line += f"{int(obj.default)},"
+        elif obj.data_type in canopen.objectdictionary.datatypes.FLOAT_TYPES:
+            line += f"{obj.default},"
         else:
             line += f"{remove_node_id(obj.default)},"
 
@@ -282,6 +286,8 @@ def attr_lines(od: canopen.ObjectDictionary, index: int) -> list[str]:
                 lines.append(f"{INDENT8}.{name} = 0x{obj[i].default:X},")
             elif obj[i].data_type == canopen.objectdictionary.datatypes.BOOLEAN:
                 lines.append(f"{INDENT8}.{name} = {int(obj[i].default)},")
+            elif obj[i].data_type in canopen.objectdictionary.datatypes.FLOAT_TYPES:
+                lines.append(f"{INDENT8}.{name} = {obj[i].default},")
             else:
                 lines.append(f"{INDENT8}.{name} = {remove_node_id(obj[i].default)},")
 
@@ -684,6 +690,8 @@ def gen_fw_files(args: Optional[Namespace] = None) -> None:
         od = config.od_db["adcs"]
     elif arg_card in ["rw", "reaction_wheel"]:
         od = config.od_db["rw_1"]
+    elif arg_card in ["diode", "diode_test"]:
+        od = config.od_db["diode_test"]
     elif arg_card == "base":
         od = config.fw_base_od
     else:

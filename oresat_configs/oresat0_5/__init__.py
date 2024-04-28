@@ -7,6 +7,7 @@ from ..base import (
     BAT_CONFIG_PATH,
     C3_CONFIG_PATH,
     CFC_CONFIG_PATH,
+    DIODE_CONFIG_PATH,
     DXWIFI_CONFIG_PATH,
     FW_COMMON_CONFIG_PATH,
     GPS_CONFIG_PATH,
@@ -40,4 +41,5 @@ CARD_CONFIGS_PATH: ConfigPaths = {
     "dxwifi": (DXWIFI_CONFIG_PATH, SW_COMMON_CONFIG_PATH),
     "cfc_processor": (CFC_CONFIG_PATH, SW_COMMON_CONFIG_PATH),
     "cfc_sensor": None,
+    "diode_test": (DIODE_CONFIG_PATH, FW_COMMON_CONFIG_PATH),
 }

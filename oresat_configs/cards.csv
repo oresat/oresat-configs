@@ -21,3 +21,4 @@ rw_4,Reaction Wheel 4,0x48,stm32,0x23,false,
 dxwifi,DxWiFi,0x4C,octavo,0x1B,false,
 cfc_processor,CFC Processor,0x50,octavo,0x1D,false,cfc_sensor
 cfc_sensor,CFC Sensor,0x0,none,0x1E,false,
+diode_test,Diode Test,0x54,stm32,0x11,false,

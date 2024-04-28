@@ -10,6 +10,7 @@ objects:
       standby: 2
       film: 3
       transmit: 4
+      purge: 5
       error: 0xff
 
   - index: 0x4001
