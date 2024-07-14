@@ -25,7 +25,7 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         default=Consts.default().arg,
         choices=[m.arg for m in Consts],
         type=lambda x: x.lower().removeprefix("oresat"),
-        help="oresat mission, defaults to %(default)s",
+        help="Oresat Mission. (Default: %(default)s)",
     )
     # I'd like to pull the descriptions directly out of Card but attribute docstrings are discarded
     # and not accessable at runtime.

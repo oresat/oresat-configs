@@ -55,6 +55,7 @@ jobs:
         oresat-gen-fw-files c3
         oresat-gen-dcf c3
         oresat-print-od c3 > /dev/null
+        oresat-gen-kaitai
         oresat-gen-xtce
         curl -O https://www.omg.org/spec/XTCE/20180204/SpaceSystem.xsd
         xmllint --noout --schema SpaceSystem.xsd oresat0_5.xtce

@@ -30,6 +30,7 @@ oresat-gen-fw-files = "oresat_configs.scripts.gen_fw_files:gen_fw_files"
 oresat-gen-dcf = "oresat_configs.scripts.gen_dcf:gen_dcf"
 oresat-print-od = "oresat_configs.scripts.print_od:print_od"
 oresat-sdo-transfer = "oresat_configs.scripts.sdo_transfer:sdo_transfer"
+oresat-gen-kaitai = "oresat_configs.scripts.gen_kaitai:gen_kaitai"
 oresat-gen-xtce = "oresat_configs.scripts.gen_xtce:gen_xtce"
 
 [tool.setuptools.packages.find]
@@ -65,7 +66,10 @@ linters = "pycodestyle,pyflakes,pylint,mccabe,mypy,radon"
 # E0401:    Cannot find implementation or library stub for module named
 # R0902:    Too many instance attributes
 # W0511:    TODOs or FIXMEs
-ignore = "E402,C901,C0103,E203,R0912,R0915,R901,R901,R0914,C0413,C0206,R1716,W1514,R1702,E0401,R0902,W0511"
+# E221:     Multiple Whitespace in bitstring indexing
+# E231:     Missing Whitespace in bitstring indexing
+# E702:     Multiple statements on line in Generate Firmware script
+ignore = "E402,C901,C0103,E203,R0912,R0915,R901,R901,R0914,C0413,C0206,R1716,W1514,R1702,E0401,R0902,W0511,E221,E231,E702"
 max_line_length = 100
 
 [[tool.pylama.files]]

@@ -23,7 +23,7 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         default=Consts.default().arg,
         choices=[m.arg for m in Consts],
         type=lambda x: x.lower().removeprefix("oresat"),
-        help="oresat mission, defaults to %(default)s",
+        help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument("card", help="card name; all, c3, gps, star_tracker_1, etc")
     parser.add_argument("-d", "--dir-path", default=".", help='directory path; defautl "."')
