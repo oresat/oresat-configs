@@ -173,7 +173,7 @@
     - subindex: 0x1
       name: command
       description: OS command
-      data_type: domain
+      data_type: octet_str
       access_type: rw
     
     - subindex: 0x2
@@ -184,13 +184,13 @@
         error_no_reply: 0x02
         error_reply: 0x03
         executing: 0xFF
-      data_type: uint32
+      data_type: uint8
       access_type: ro
     
     - subindex: 0x3
       name: reply
       description: OS command reply
-      data_type: domain
+      data_type: octet_str
       access_type: ro
     
 - index: 0x2010
