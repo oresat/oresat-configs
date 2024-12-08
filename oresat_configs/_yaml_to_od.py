@@ -104,7 +104,7 @@ def _parse_bit_definitions(obj: Union[IndexObject, SubindexObject]) -> dict[str,
 
 
 def _make_var(obj: Union[IndexObject, SubindexObject], index: int, subindex: int = 0) -> Variable:
-    var = canopen.objectdictionary.Variable(obj.name, index, subindex)
+    var = Variable(obj.name, index, subindex)
     var.access_type = obj.access_type
     var.description = obj.description
     var.bit_definitions = _parse_bit_definitions(obj)
@@ -128,9 +128,9 @@ def _make_var(obj: Union[IndexObject, SubindexObject], index: int, subindex: int
 
 def _make_rec(obj: IndexObject) -> Record:
     index = obj.index
-    rec = canopen.objectdictionary.Record(obj.name, index)
+    rec = Record(obj.name, index)
 
-    var0 = canopen.objectdictionary.Variable("highest_index_supported", index, 0x0)
+    var0 = Variable("highest_index_supported", index, 0x0)
     var0.access_type = "const"
     var0.data_type = canopen.objectdictionary.UNSIGNED8
     rec.add_member(var0)
@@ -147,9 +147,9 @@ def _make_rec(obj: IndexObject) -> Record:
 
 def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
     index = obj.index
-    arr = canopen.objectdictionary.Array(obj.name, index)
+    arr = Array(obj.name, index)
 
-    var0 = canopen.objectdictionary.Variable("highest_index_supported", index, 0x0)
+    var0 = Variable("highest_index_supported", index, 0x0)
     var0.access_type = "const"
     var0.data_type = canopen.objectdictionary.UNSIGNED8
     arr.add_member(var0)
@@ -171,7 +171,7 @@ def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
         for subindex, name in zip(subindexes, names):
             if subindex in arr.subindices:
                 raise ValueError(f"subindex 0x{subindex:X} already in array")
-            var = canopen.objectdictionary.Variable(name, index, subindex)
+            var = Variable(name, index, subindex)
             var.access_type = gen_sub.access_type
             var.data_type = STR_2_OD_DATA_TYPE[gen_sub.data_type]
             var.bit_definitions = _parse_bit_definitions(gen_sub)
@@ -231,24 +231,20 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
 
         comm_index = TPDO_COMM_START + tpdo.num - 1
         map_index = TPDO_PARA_START + tpdo.num - 1
-        comm_rec = canopen.objectdictionary.Record(
-            f"tpdo_{tpdo.num}_communication_parameters", comm_index
-        )
-        map_rec = canopen.objectdictionary.Record(f"tpdo_{tpdo.num}_mapping_parameters", map_index)
+        comm_rec = Record(f"tpdo_{tpdo.num}_communication_parameters", comm_index)
+        map_rec = Record(f"tpdo_{tpdo.num}_mapping_parameters", map_index)
         od.add_object(map_rec)
         od.add_object(comm_rec)
 
         # index 0 for mapping index
-        var0 = canopen.objectdictionary.Variable("highest_index_supported", map_index, 0x0)
+        var0 = Variable("highest_index_supported", map_index, 0x0)
         var0.access_type = "const"
         var0.data_type = canopen.objectdictionary.UNSIGNED8
         map_rec.add_member(var0)
 
         for t_field in tpdo.fields:
             subindex = tpdo.fields.index(t_field) + 1
-            var = canopen.objectdictionary.Variable(
-                f"mapping_object_{subindex}", map_index, subindex
-            )
+            var = Variable(f"mapping_object_{subindex}", map_index, subindex)
             var.access_type = "const"
             var.data_type = canopen.objectdictionary.UNSIGNED32
             if len(t_field) == 1:
@@ -267,13 +263,13 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
         var0.default = len(map_rec) - 1
 
         # index 0 for comms index
-        var0 = canopen.objectdictionary.Variable("highest_index_supported", comm_index, 0x0)
+        var0 = Variable("highest_index_supported", comm_index, 0x0)
         var0.access_type = "const"
         var0.data_type = canopen.objectdictionary.UNSIGNED8
         var0.default = 0x6
         comm_rec.add_member(var0)
 
-        var = canopen.objectdictionary.Variable("cob_id", comm_index, 0x1)
+        var = Variable("cob_id", comm_index, 0x1)
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED32
         node_id = od.node_id
@@ -286,7 +282,7 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
             var.default |= 1 << 30  # rtr bit, 1 for no RTR allowed
         comm_rec.add_member(var)
 
-        var = canopen.objectdictionary.Variable("transmission_type", comm_index, 0x2)
+        var = Variable("transmission_type", comm_index, 0x2)
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED8
         if tpdo.transmission_type == "sync":
@@ -295,19 +291,19 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
             var.default = 254  # event driven
         comm_rec.add_member(var)
 
-        var = canopen.objectdictionary.Variable("inhibit_time", comm_index, 0x3)
+        var = Variable("inhibit_time", comm_index, 0x3)
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED16
         var.default = tpdo.inhibit_time_ms
         comm_rec.add_member(var)
 
-        var = canopen.objectdictionary.Variable("event_timer", comm_index, 0x5)
+        var = Variable("event_timer", comm_index, 0x5)
         var.access_type = "rw"
         var.data_type = canopen.objectdictionary.UNSIGNED16
         var.default = tpdo.event_timer_ms
         comm_rec.add_member(var)
 
-        var = canopen.objectdictionary.Variable("sync_start_value", comm_index, 0x6)
+        var = Variable("sync_start_value", comm_index, 0x6)
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED8
         var.default = tpdo.sync_start_value
@@ -331,14 +327,12 @@ def _add_rpdo_data(
     else:
         rpdo_mapped_index = 0x5000 + tpdo_node_od.node_id
         if rpdo_mapped_index not in rpdo_node_od:
-            rpdo_mapped_rec = canopen.objectdictionary.Record(tpdo_node_name, rpdo_mapped_index)
+            rpdo_mapped_rec = Record(tpdo_node_name, rpdo_mapped_index)
             rpdo_mapped_rec.description = f"{tpdo_node_name} tpdo mapped data"
             rpdo_node_od.add_object(rpdo_mapped_rec)
 
             # index 0 for node data index
-            var = canopen.objectdictionary.Variable(
-                "highest_index_supported", rpdo_mapped_index, 0x0
-            )
+            var = Variable("highest_index_supported", rpdo_mapped_index, 0x0)
             var.access_type = "const"
             var.data_type = canopen.objectdictionary.UNSIGNED8
             var.default = 0
@@ -350,44 +344,40 @@ def _add_rpdo_data(
     rpdo_num = rpdo_node_od.device_information.nr_of_RXPDO
 
     rpdo_comm_index = RPDO_COMM_START + rpdo_num - 1
-    rpdo_comm_rec = canopen.objectdictionary.Record(
-        f"rpdo_{rpdo_num}_communication_parameters", rpdo_comm_index
-    )
+    rpdo_comm_rec = Record(f"rpdo_{rpdo_num}_communication_parameters", rpdo_comm_index)
     rpdo_node_od.add_object(rpdo_comm_rec)
 
-    var = canopen.objectdictionary.Variable("cob_id", rpdo_comm_index, 0x1)
+    var = Variable("cob_id", rpdo_comm_index, 0x1)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED32
     var.default = tpdo_node_od[tpdo_comm_index][0x1].default  # get value from TPDO def
     rpdo_comm_rec.add_member(var)
 
-    var = canopen.objectdictionary.Variable("transmission_type", rpdo_comm_index, 0x2)
+    var = Variable("transmission_type", rpdo_comm_index, 0x2)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
     var.default = 254
     rpdo_comm_rec.add_member(var)
 
-    var = canopen.objectdictionary.Variable("event_timer", rpdo_comm_index, 0x5)
+    var = Variable("event_timer", rpdo_comm_index, 0x5)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED16
     var.default = 0
     rpdo_comm_rec.add_member(var)
 
     # index 0 for comms index
-    var = canopen.objectdictionary.Variable("highest_index_supported", rpdo_comm_index, 0x0)
+    var = Variable("highest_index_supported", rpdo_comm_index, 0x0)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
     var.default = sorted(list(rpdo_comm_rec.subindices))[-1]  # no subindex 3 or 4
     rpdo_comm_rec.add_member(var)
 
     rpdo_mapping_index = RPDO_PARA_START + rpdo_num - 1
-    rpdo_mapping_rec = canopen.objectdictionary.Record(
-        f"rpdo_{rpdo_num}_mapping_parameters", rpdo_mapping_index
-    )
+    rpdo_mapping_rec = Record(f"rpdo_{rpdo_num}_mapping_parameters", rpdo_mapping_index)
     rpdo_node_od.add_object(rpdo_mapping_rec)
 
     # index 0 for map index
-    var = canopen.objectdictionary.Variable("highest_index_supported", rpdo_mapping_index, 0x0)
+    var = Variable("highest_index_supported", rpdo_mapping_index, 0x0)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
     var.default = 0
@@ -404,13 +394,13 @@ def _add_rpdo_data(
             rpdo_mapped_subindex = rpdo_mapped_rec[0].default + 1
             tpdo_mapped_index = (tpdo_mapping_obj.default >> 16) & 0xFFFF
             tpdo_mapped_subindex = (tpdo_mapping_obj.default >> 8) & 0xFF
-            if isinstance(tpdo_node_od[tpdo_mapped_index], canopen.objectdictionary.Variable):
+            if isinstance(tpdo_node_od[tpdo_mapped_index], Variable):
                 tpdo_mapped_obj = tpdo_node_od[tpdo_mapped_index]
                 name = tpdo_mapped_obj.name
             else:
                 tpdo_mapped_obj = tpdo_node_od[tpdo_mapped_index][tpdo_mapped_subindex]
                 name = tpdo_node_od[tpdo_mapped_index].name + "_" + tpdo_mapped_obj.name
-            var = canopen.objectdictionary.Variable(name, rpdo_mapped_index, rpdo_mapped_subindex)
+            var = Variable(name, rpdo_mapped_index, rpdo_mapped_subindex)
             var.description = tpdo_mapped_obj.description
             var.access_type = "rw"
             var.data_type = tpdo_mapped_obj.data_type
@@ -426,7 +416,7 @@ def _add_rpdo_data(
 
         # master node mapping obj
         rpdo_mapping_subindex = rpdo_mapping_rec[0].default + 1
-        var = canopen.objectdictionary.Variable(
+        var = Variable(
             f"mapping_object_{rpdo_mapping_subindex}",
             rpdo_mapping_index,
             rpdo_mapping_subindex,
@@ -613,7 +603,7 @@ def _gen_od_db(
 
     # make od with common and card objects and tpdos
     for name, config in configs.items():
-        od = canopen.ObjectDictionary()
+        od = ObjectDictionary()
         od.bitrate = 1_000_000  # bps
         od.node_id = cards[name].node_id
         od.device_information.allowed_baudrates = set([1000])
@@ -673,7 +663,7 @@ def _gen_od_db(
     # set all object values to its default value
     for od in od_db.values():
         for index in od:
-            if not isinstance(od[index], canopen.objectdictionary.Variable):
+            if not isinstance(od[index], Variable):
                 for subindex in od[index]:
                     od[index][subindex].value = od[index][subindex].default
             else:
@@ -716,10 +706,10 @@ def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> li
     return beacon_objs
 
 
-def _gen_fw_base_od(mission: Mission) -> canopen.ObjectDictionary:
+def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
     """Generate all ODs for a OreSat mission."""
 
-    od = canopen.ObjectDictionary()
+    od = ObjectDictionary()
     od.bitrate = 1_000_000  # bps
     od.node_id = 0x7C
     od.device_information.allowed_baudrates = set([1000])  # kpbs
