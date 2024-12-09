@@ -144,12 +144,12 @@ class IndexObject(ConfigObject):
 
     .. code-block:: yaml
 
-        tpdos:
-          - num: 1
-            fields:
-              - [system, storage_percent]
-              - [system, ram_percent]
-            event_timer_ms: 30000
+        objects:
+          - index: 0x4000
+            name: temperature
+            data_type: uint8
+            description: number of files in fread cache
+            unit: C
     """
 
     name: str = ""
@@ -165,10 +165,33 @@ class IndexObject(ConfigObject):
 
 
 @dataclass
-class Tpdo:
+class Rpdo:
     """
-    TPDO.
+    Example:
 
+    .. code-block:: yaml
+
+        rpdos:
+          - num: 1
+            fields:
+              - [control, state]
+              - [control, example_1]
+              - [control, example_3]
+    """
+
+    num: int
+    """TPDO number, 1-16."""
+    fields: list[list[str]] = field(default_factory=list)
+    """Index and subindexes of objects to map to the TPDO."""
+    transmission_type: str = "timer"
+    """Transmission type of TPDO. Must be ``"timer"`` or ``"sync"``."""
+    event_timer_ms: int = 0
+    """Send the TPDO periodicly in milliseconds."""
+
+
+@dataclass
+class Tpdo(Rpdo):
+    """
     Example:
 
     .. code-block:: yaml
@@ -181,12 +204,8 @@ class Tpdo:
             event_timer_ms: 30000
     """
 
-    num: int
-    """TPDO number, 1-16."""
     rtr: bool = False
     """TPDO supports RTR."""
-    transmission_type: str = "timer"
-    """Transmission type of TPDO. Must be ``"timer"`` or ``"sync"``."""
     sync: int = 0
     """Send this TPDO every x SYNCs. 0 for acycle. Max 240."""
     sync_start_value: int = 0
@@ -194,31 +213,40 @@ class Tpdo:
     When set to 0, the count of sync is not process for this TPDO.
     When set to 1, the count of sync is processed for this TPDO .
     """
-    event_timer_ms: int = 0
-    """Send the TPDO periodicly in milliseconds."""
     inhibit_time_ms: int = 0
     """Delay after boot before the event timer starts in milliseconds."""
-    fields: list[list[str]] = field(default_factory=list)
-    """Index and subindexes of objects to map to the TPDO."""
 
 
 @dataclass
-class Rpdo:
+class TpdoGen:
     """
-    RPDO section.
-
     Example:
 
     .. code-block:: yaml
 
-        rpdos:
-          - num: 1
-            card: c3
-            tpdo_num: 1
+        tpdo_gen:
+          - card: gps
+            rpdo_num: 1
     """
 
-    num: int
-    """TPDO number to use, 1-16."""
+    card: str
+    """Card the TPDO is from."""
+    rpdo_num: int
+    """TPDO number, 1-16."""
+
+
+@dataclass
+class RpdoGen:
+    """
+    Example:
+
+    .. code-block:: yaml
+
+        rpdo_gen:
+          - card: c3
+            tpdo_num: 3
+    """
+
     card: str
     """Card the TPDO is from."""
     tpdo_num: int
@@ -250,7 +278,19 @@ class CardConfig:
              - [satellite_id]
           ...
 
+        tpdo_gen:
+          - num: 1
+            card: gps
+            rpdo_num: 1
+          ...
+
         rpdos:
+          - num: 1
+            fields:
+             - [control, state]
+          ...
+
+        rpdos_gen:
           - num: 1
             card: c3
             tpdo_num: 1
@@ -262,9 +302,13 @@ class CardConfig:
     objects: list[IndexObject] = field(default_factory=list)
     """Unique card objects."""
     tpdos: list[Tpdo] = field(default_factory=list)
-    """TPDOs for the card."""
+    """PDOs defined by the node, for the card to boardcast."""
+    tpdos_gen: list[TpdoGen] = field(default_factory=list)
+    """PDOs defined by another node, for the card to boardcast."""
     rpdos: list[Rpdo] = field(default_factory=list)
-    """RPDOs for the card."""
+    """PDOs defined by the node, for the card to consume."""
+    rpdos_gen: list[RpdoGen] = field(default_factory=list)
+    """PDOs defined by another node, for the card to consume."""
     fram: list[list[str]] = field(default_factory=list)
     """C3 only. List of index and subindex for the c3 to save the values of to F-RAM."""
 
