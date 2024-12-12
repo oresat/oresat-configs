@@ -311,132 +311,132 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
 
 
 def _add_rpdo_data(
-    tpdo_num: int,
-    rpdo_node_od: ObjectDictionary,
-    tpdo_node_od: ObjectDictionary,
-    tpdo_node_name: str,
+    pdo_num: int,
+    od: ObjectDictionary,
+    pdo_node_od: ObjectDictionary,
+    pdo_node_name: str,
 ) -> None:
-    tpdo_comm_index = TPDO_COMM_START + tpdo_num - 1
-    tpdo_mapping_index = TPDO_PARA_START + tpdo_num - 1
+    pdo_comm_index = TPDO_COMM_START + pdo_num - 1
+    pdo_mapping_index = TPDO_PARA_START + pdo_num - 1
 
-    time_sync_tpdo = tpdo_node_od[tpdo_comm_index]["cob_id"].default == 0x181
+    time_sync_tpdo = pdo_node_od[pdo_comm_index]["cob_id"].default == 0x181
     if time_sync_tpdo:
-        rpdo_mapped_index = 0x2010
-        rpdo_mapped_rec = rpdo_node_od[rpdo_mapped_index]
-        rpdo_mapped_subindex = 0
+        mapped_index = 0x2010
+        mapped_rec = od[mapped_index]
+        mapped_subindex = 0
     else:
-        rpdo_mapped_index = 0x5000 + tpdo_node_od.node_id
-        if rpdo_mapped_index not in rpdo_node_od:
-            rpdo_mapped_rec = Record(tpdo_node_name, rpdo_mapped_index)
-            rpdo_mapped_rec.description = f"{tpdo_node_name} tpdo mapped data"
-            rpdo_node_od.add_object(rpdo_mapped_rec)
+        mapped_index = 0x5000 + pdo_node_od.node_id
+        if mapped_index not in od:
+            mapped_rec = Record(pdo_node_name, mapped_index)
+            mapped_rec.description = f"{pdo_node_name} tpdo mapped data"
+            od.add_object(mapped_rec)
 
             # index 0 for node data index
-            var = Variable("highest_index_supported", rpdo_mapped_index, 0x0)
+            var = Variable("highest_index_supported", mapped_index, 0x0)
             var.access_type = "const"
             var.data_type = canopen.objectdictionary.UNSIGNED8
             var.default = 0
-            rpdo_mapped_rec.add_member(var)
+            mapped_rec.add_member(var)
         else:
-            rpdo_mapped_rec = rpdo_node_od[rpdo_mapped_index]
+            mapped_rec = od[mapped_index]
 
-    rpdo_node_od.device_information.nr_of_RXPDO += 1
-    rpdo_num = rpdo_node_od.device_information.nr_of_RXPDO
+    od.device_information.nr_of_RXPDO += 1
+    rpdo_num = od.device_information.nr_of_RXPDO
 
-    rpdo_comm_index = RPDO_COMM_START + rpdo_num - 1
-    rpdo_comm_rec = Record(f"rpdo_{rpdo_num}_communication_parameters", rpdo_comm_index)
-    rpdo_node_od.add_object(rpdo_comm_rec)
+    comm_index = RPDO_COMM_START + rpdo_num - 1
+    comm_rec = Record(f"rpdo_{rpdo_num}_communication_parameters", comm_index)
+    od.add_object(comm_rec)
 
-    var = Variable("cob_id", rpdo_comm_index, 0x1)
+    var = Variable("cob_id", comm_index, 0x1)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED32
-    var.default = tpdo_node_od[tpdo_comm_index][0x1].default  # get value from TPDO def
-    rpdo_comm_rec.add_member(var)
+    var.default = pdo_node_od[pdo_comm_index][0x1].default  # get value from TPDO def
+    comm_rec.add_member(var)
 
-    var = Variable("transmission_type", rpdo_comm_index, 0x2)
+    var = Variable("transmission_type", comm_index, 0x2)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
     var.default = 254
-    rpdo_comm_rec.add_member(var)
+    comm_rec.add_member(var)
 
-    var = Variable("event_timer", rpdo_comm_index, 0x5)
+    var = Variable("event_timer", comm_index, 0x5)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED16
     var.default = 0
-    rpdo_comm_rec.add_member(var)
+    comm_rec.add_member(var)
 
     # index 0 for comms index
-    var = Variable("highest_index_supported", rpdo_comm_index, 0x0)
+    var = Variable("highest_index_supported", comm_index, 0x0)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
-    var.default = sorted(list(rpdo_comm_rec.subindices))[-1]  # no subindex 3 or 4
-    rpdo_comm_rec.add_member(var)
+    var.default = sorted(list(comm_rec.subindices))[-1]  # no subindex 3 or 4
+    comm_rec.add_member(var)
 
-    rpdo_mapping_index = RPDO_PARA_START + rpdo_num - 1
-    rpdo_mapping_rec = Record(f"rpdo_{rpdo_num}_mapping_parameters", rpdo_mapping_index)
-    rpdo_node_od.add_object(rpdo_mapping_rec)
+    mapping_index = RPDO_PARA_START + rpdo_num - 1
+    mapping_rec = Record(f"rpdo_{rpdo_num}_mapping_parameters", mapping_index)
+    od.add_object(mapping_rec)
 
     # index 0 for map index
-    var = Variable("highest_index_supported", rpdo_mapping_index, 0x0)
+    var = Variable("highest_index_supported", mapping_index, 0x0)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
     var.default = 0
-    rpdo_mapping_rec.add_member(var)
+    mapping_rec.add_member(var)
 
-    for j in range(len(tpdo_node_od[tpdo_mapping_index])):
+    for j in range(len(pdo_node_od[pdo_mapping_index])):
         if j == 0:
             continue  # skip
 
-        tpdo_mapping_obj = tpdo_node_od[tpdo_mapping_index][j]
+        pdo_mapping_obj = pdo_node_od[pdo_mapping_index][j]
 
         # master node data
         if not time_sync_tpdo:
-            rpdo_mapped_subindex = rpdo_mapped_rec[0].default + 1
-            tpdo_mapped_index = (tpdo_mapping_obj.default >> 16) & 0xFFFF
-            tpdo_mapped_subindex = (tpdo_mapping_obj.default >> 8) & 0xFF
-            if isinstance(tpdo_node_od[tpdo_mapped_index], Variable):
-                tpdo_mapped_obj = tpdo_node_od[tpdo_mapped_index]
-                name = tpdo_mapped_obj.name
+            mapped_subindex = mapped_rec[0].default + 1
+            pdo_mapped_index = (pdo_mapping_obj.default >> 16) & 0xFFFF
+            pdo_mapped_subindex = (pdo_mapping_obj.default >> 8) & 0xFF
+            if isinstance(pdo_node_od[pdo_mapped_index], Variable):
+                pdo_mapped_obj = pdo_node_od[pdo_mapped_index]
+                name = pdo_mapped_obj.name
             else:
-                tpdo_mapped_obj = tpdo_node_od[tpdo_mapped_index][tpdo_mapped_subindex]
-                name = tpdo_node_od[tpdo_mapped_index].name + "_" + tpdo_mapped_obj.name
-            var = Variable(name, rpdo_mapped_index, rpdo_mapped_subindex)
-            var.description = tpdo_mapped_obj.description
+                pdo_mapped_obj = pdo_node_od[pdo_mapped_index][pdo_mapped_subindex]
+                name = pdo_node_od[pdo_mapped_index].name + "_" + pdo_mapped_obj.name
+            var = Variable(name, mapped_index, mapped_subindex)
+            var.description = pdo_mapped_obj.description
             var.access_type = "rw"
-            var.data_type = tpdo_mapped_obj.data_type
-            var.default = tpdo_mapped_obj.default
-            var.unit = tpdo_mapped_obj.unit
-            var.factor = tpdo_mapped_obj.factor
-            var.bit_definitions = deepcopy(tpdo_mapped_obj.bit_definitions)
-            var.value_descriptions = deepcopy(tpdo_mapped_obj.value_descriptions)
-            var.max = tpdo_mapped_obj.max
-            var.min = tpdo_mapped_obj.min
+            var.data_type = pdo_mapped_obj.data_type
+            var.default = pdo_mapped_obj.default
+            var.unit = pdo_mapped_obj.unit
+            var.factor = pdo_mapped_obj.factor
+            var.bit_definitions = deepcopy(pdo_mapped_obj.bit_definitions)
+            var.value_descriptions = deepcopy(pdo_mapped_obj.value_descriptions)
+            var.max = pdo_mapped_obj.max
+            var.min = pdo_mapped_obj.min
             var.pdo_mappable = True
-            rpdo_mapped_rec.add_member(var)
+            mapped_rec.add_member(var)
 
         # master node mapping obj
-        rpdo_mapping_subindex = rpdo_mapping_rec[0].default + 1
+        mapping_subindex = mapping_rec[0].default + 1
         var = Variable(
-            f"mapping_object_{rpdo_mapping_subindex}",
-            rpdo_mapping_index,
-            rpdo_mapping_subindex,
+            f"mapping_object_{mapping_subindex}",
+            mapping_index,
+            mapping_subindex,
         )
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED32
-        value = rpdo_mapped_index << 16
-        value += rpdo_mapped_subindex << 8
-        if rpdo_mapped_subindex == 0:
-            rpdo_mapped_obj = rpdo_node_od[rpdo_mapped_index]
+        value = mapped_index << 16
+        value += mapped_subindex << 8
+        if mapped_subindex == 0:
+            mapped_obj = od[mapped_index]
         else:
-            rpdo_mapped_obj = rpdo_node_od[rpdo_mapped_index][rpdo_mapped_subindex]
-        value += OD_DATA_TYPES[rpdo_mapped_obj.data_type].size
+            mapped_obj = od[mapped_index][mapped_subindex]
+        value += OD_DATA_TYPES[mapped_obj.data_type].size
         var.default = value
-        rpdo_mapping_rec.add_member(var)
+        mapping_rec.add_member(var)
 
         # update these
         if not time_sync_tpdo:
-            rpdo_mapped_rec[0].default += 1
-        rpdo_mapping_rec[0].default += 1
+            mapped_rec[0].default += 1
+        mapping_rec[0].default += 1
 
 
 def _add_node_rpdo_data(
