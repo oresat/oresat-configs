@@ -1,1 +1,0 @@
-"""OreSat od base configs."""

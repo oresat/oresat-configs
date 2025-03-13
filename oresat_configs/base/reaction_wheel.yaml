@@ -106,8 +106,7 @@ objects:
     description: reaction wheel controller temperatures
     object_type: array
     generate_subindexes:
-      subindexes: fixed_length
-      length: 3
+      subindexes: 3
       name: sensor
       data_type: int16
       access_type: ro

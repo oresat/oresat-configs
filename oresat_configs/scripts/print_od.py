@@ -6,7 +6,7 @@ from typing import Any, Optional
 import canopen
 
 from .. import Mission, OreSatConfig
-from .._yaml_to_od import STR_2_OD_DATA_TYPE
+from .._yaml_to_od import DataType
 
 PRINT_OD = "print the object dictionary out to stdout"
 
@@ -58,21 +58,17 @@ def print_od(args: Optional[Namespace] = None) -> None:
 
     config = OreSatConfig(args.oresat)
 
-    inverted_od_data_types = {}
-    for key, value in STR_2_OD_DATA_TYPE.items():
-        inverted_od_data_types[value] = key
-
     arg_card = args.card.lower().replace("-", "_")
 
     od = config.od_db[arg_card]
     for i in od:
         if isinstance(od[i], canopen.objectdictionary.Variable):
-            data_type = inverted_od_data_types[od[i].data_type]
+            data_type = DataType(od[i].data_type)
             value = format_default(od[i].default)
-            print(f"0x{i:04X}: {od[i].name} - {data_type} - {value}")
+            print(f"0x{i:04X}: {od[i].name} - {data_type.name} - {value}")
         else:
             print(f"0x{i:04X}: {od[i].name}")
             for j in od[i]:
-                data_type = inverted_od_data_types[od[i][j].data_type]
+                data_type = DataType(od[i][j].data_type)
                 value = format_default(od[i][j].default)
-                print(f"  0x{i:04X} 0x{j:02X}: {od[i][j].name} - {data_type} - {value}")
+                print(f"  0x{i:04X} 0x{j:02X}: {od[i][j].name} - {data_type.name} - {value}")

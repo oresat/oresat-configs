@@ -1,96 +1,82 @@
-"""Convert OreSat configs to ODs."""
-
-from collections import namedtuple
 from copy import deepcopy
-from importlib import abc, resources
-from typing import Union
+from enum import Enum
+from typing import Any, Union
 
 import canopen
 from canopen import ObjectDictionary
 from canopen.objectdictionary import Array, Record, Variable
-from dacite import from_dict
-from yaml import CLoader, load
 
-from . import base
 from .beacon_config import BeaconConfig
-from .card_config import CardConfig, ConfigObject, IndexObject, SubindexObject
-from .card_info import Card
-from .constants import Mission, __version__
-
-STD_OBJS_FILE_NAME = resources.files("oresat_configs") / "standard_objects.yaml"
+from .od_config import ConfigObject, GenerateSubindex, IndexObject, OdConfig, SubindexObject
+from .std_objs import STD_OBJS
 
 RPDO_COMM_START = 0x1400
 RPDO_PARA_START = 0x1600
 TPDO_COMM_START = 0x1800
 TPDO_PARA_START = 0x1A00
 
-STR_2_OD_DATA_TYPE = {
-    "bool": canopen.objectdictionary.BOOLEAN,
-    "int8": canopen.objectdictionary.INTEGER8,
-    "int16": canopen.objectdictionary.INTEGER16,
-    "int32": canopen.objectdictionary.INTEGER32,
-    "int64": canopen.objectdictionary.INTEGER64,
-    "uint8": canopen.objectdictionary.UNSIGNED8,
-    "uint16": canopen.objectdictionary.UNSIGNED16,
-    "uint32": canopen.objectdictionary.UNSIGNED32,
-    "uint64": canopen.objectdictionary.UNSIGNED64,
-    "float32": canopen.objectdictionary.REAL32,
-    "float64": canopen.objectdictionary.REAL64,
-    "str": canopen.objectdictionary.VISIBLE_STRING,
-    "octet_str": canopen.objectdictionary.OCTET_STRING,
-    "domain": canopen.objectdictionary.DOMAIN,
-}
 
-OdDataTypeInfo = namedtuple("OdDataTypeInfo", ("default", "size", "low_limit", "high_limit"))
+class DataType(Enum):
+    BOOL = 0x1
+    INT8 = 0x2
+    INT16 = 0x3
+    INT32 = 0x4
+    UINT8 = 0x5
+    UINT16 = 0x6
+    UINT32 = 0x7
+    FLOAT32 = 0x8
+    STR = 0x9
+    OCTET_STR = 0xA
+    DOMAIN = 0xF
+    FLOAT64 = 0x11
+    INT64 = 0x15
+    UINT64 = 0x1B
 
-OD_DATA_TYPES = {
-    canopen.objectdictionary.BOOLEAN: OdDataTypeInfo(False, 8, None, None),
-    canopen.objectdictionary.INTEGER8: OdDataTypeInfo(0, 8, -(2**8) // 2, 2**8 // 2 - 1),
-    canopen.objectdictionary.INTEGER16: OdDataTypeInfo(0, 16, -(2**16) // 2, 2**16 // 2 - 1),
-    canopen.objectdictionary.INTEGER32: OdDataTypeInfo(0, 16, -(2**32) // 2, 2**32 // 2 - 1),
-    canopen.objectdictionary.INTEGER64: OdDataTypeInfo(0, 16, -(2**64) // 2, 2**64 // 2 - 1),
-    canopen.objectdictionary.UNSIGNED8: OdDataTypeInfo(0, 8, 0, 2**8 - 1),
-    canopen.objectdictionary.UNSIGNED16: OdDataTypeInfo(0, 16, 0, 2**16 - 1),
-    canopen.objectdictionary.UNSIGNED32: OdDataTypeInfo(0, 32, 0, 2**32 - 1),
-    canopen.objectdictionary.UNSIGNED64: OdDataTypeInfo(0, 64, 0, 2**64 - 1),
-    canopen.objectdictionary.REAL32: OdDataTypeInfo(0.0, 32, None, None),
-    canopen.objectdictionary.REAL64: OdDataTypeInfo(0.0, 64, None, None),
-    canopen.objectdictionary.VISIBLE_STRING: OdDataTypeInfo("", 0, None, None),
-    canopen.objectdictionary.OCTET_STRING: OdDataTypeInfo(b"", 0, None, None),
-    canopen.objectdictionary.DOMAIN: OdDataTypeInfo(None, 0, None, None),
-}
+    @property
+    def size(self) -> int:
+        size = 0
+        if self.name.endswith("8"):
+            size = 1
+        elif self.name.endswith("16"):
+            size = 2
+        elif self.name.endswith("32"):
+            size = 4
+        elif self.name.endswith("64"):
+            size = 8
+        return size
 
-DYNAMIC_LEN_DATA_TYPES = [
-    canopen.objectdictionary.VISIBLE_STRING,
-    canopen.objectdictionary.OCTET_STRING,
-    canopen.objectdictionary.DOMAIN,
-]
+    @property
+    def has_dynamic_len(self) -> bool:
+        return self.size == 0
+
+    @property
+    def default(self) -> Any:
+        default: Any = 0
+        if self.name.startswith("FLOAT"):
+            default = 0.0
+        elif self.name == "STR":
+            default = ""
+        elif self.name == "OCTET_STR":
+            default = b""
+        elif self.name == "DOMAIN":
+            default = None
+        return default
 
 
 def _set_var_default(obj: ConfigObject, var: Variable) -> None:
-    """Set the variables default value based off of configs."""
-
     default = obj.default
-    if obj.data_type == "octet_str":
-        default = b"\x00" * obj.length
+    if obj.data_type in ["str", "octet_str"]:
+        default = b"\x00" * obj.str_length
     elif default is None:
-        default = OD_DATA_TYPES[var.data_type].default
+        default = DataType(var.data_type).default
     elif var.data_type in canopen.objectdictionary.INTEGER_TYPES and isinstance(default, str):
-        # remove node id
-        if "+$NODE_ID" in default:
-            default = default.split("+")[0]
-        elif "$NODE_ID+" in default:
-            default = var.default.split("+")[1]
-
-        # convert str to int
-        if default.startswith("0x"):
-            default = int(default, 16)
-        else:
-            default = int(default)
+        default = int(default, 16) if default.startswith("0x") else int(default)
     var.default = default
 
 
-def _parse_bit_definitions(obj: Union[IndexObject, SubindexObject]) -> dict[str, list[int]]:
+def _parse_bit_definitions(
+    obj: Union[IndexObject, SubindexObject, GenerateSubindex]
+) -> dict[str, list[int]]:
     bit_defs = {}
     for name, bits in obj.bit_definitions.items():
         if isinstance(bits, int):
@@ -113,9 +99,9 @@ def _make_var(obj: Union[IndexObject, SubindexObject], index: int, subindex: int
     var.unit = obj.unit
     if obj.scale_factor != 1:
         var.factor = obj.scale_factor
-    var.data_type = STR_2_OD_DATA_TYPE[obj.data_type]
+    var.data_type = DataType[obj.data_type.upper()].value
     _set_var_default(obj, var)
-    if var.data_type not in DYNAMIC_LEN_DATA_TYPES:
+    if DataType[obj.data_type.upper()].has_dynamic_len:
         var.pdo_mappable = True
     if obj.value_descriptions:
         var.max = obj.high_limit or max(obj.value_descriptions.values())
@@ -145,7 +131,7 @@ def _make_rec(obj: IndexObject) -> Record:
     return rec
 
 
-def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
+def _make_arr(obj: IndexObject) -> Array:
     index = obj.index
     arr = Array(obj.name, index)
 
@@ -158,22 +144,14 @@ def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
     names = []
     gen_sub = obj.generate_subindexes
     if gen_sub is not None:
-        if gen_sub.subindexes == "fixed_length":
-            subindexes = list(range(1, gen_sub.length + 1))
-            names = [f"{gen_sub.name}_{subindex}" for subindex in subindexes]
-        elif gen_sub.subindexes == "node_ids":
-            for name, sub in node_ids.items():
-                if sub == 0:
-                    continue  # a node_id of 0 is flag for not on can bus
-                names.append(name)
-                subindexes.append(sub)
-
+        subindexes = list(range(1, gen_sub.subindexes + 1))
+        names = [f"{gen_sub.name}_{subindex}" for subindex in subindexes]
         for subindex, name in zip(subindexes, names):
             if subindex in arr.subindices:
                 raise ValueError(f"subindex 0x{subindex:X} already in array")
             var = Variable(name, index, subindex)
             var.access_type = gen_sub.access_type
-            var.data_type = STR_2_OD_DATA_TYPE[gen_sub.data_type]
+            var.data_type = DataType[gen_sub.data_type.upper()].value
             var.bit_definitions = _parse_bit_definitions(gen_sub)
             for name, value in gen_sub.value_descriptions.items():
                 var.add_value_description(value, name)
@@ -186,7 +164,7 @@ def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
                 var.max = gen_sub.high_limit
                 var.min = gen_sub.low_limit
             _set_var_default(gen_sub, var)
-            if var.data_type not in DYNAMIC_LEN_DATA_TYPES:
+            if DataType[gen_sub.data_type.upper()].has_dynamic_len:
                 var.pdo_mappable = True
             arr.add_member(var)
             var0.default = subindex
@@ -201,9 +179,7 @@ def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
     return arr
 
 
-def _add_objects(
-    od: ObjectDictionary, objects: list[IndexObject], node_ids: dict[str, int]
-) -> None:
+def add_objects(od: ObjectDictionary, objects: list[IndexObject]) -> None:
     """File a objectdictionary with all the objects."""
 
     for obj in objects:
@@ -217,11 +193,66 @@ def _add_objects(
             rec = _make_rec(obj)
             od.add_object(rec)
         elif obj.object_type == "array":
-            arr = _make_arr(obj, node_ids)
+            arr = _make_arr(obj)
             od.add_object(arr)
 
 
-def _add_pdo_objs(od: ObjectDictionary, config: CardConfig, pdo_type: str) -> None:
+def _make_pdo_comms_rec(
+    name: str,
+    pdo_type: str,
+    index: int,
+    cob_id: int,
+    inhibit_time: int,
+    transmission_type: int,
+    event_timer: int,
+    sync_start_value: int,
+) -> Record:
+    comm_rec = Record(name + "_communication_parameters", index)
+
+    var0 = Variable("highest_index_supported", index, 0)
+    var0.access_type = "const"
+    var0.data_type = DataType.UINT8.default
+    var0.default = 6 if pdo_type == "tpdo" else 5
+    comm_rec.add_member(var0)
+
+    var = Variable("transmission_type", index, 1)
+    var.access_type = "const"
+    var.data_type = DataType.UINT8.default
+    var.default = cob_id
+    comm_rec.add_member(var)
+
+    var = Variable("transmission_type", index, 2)
+    var.access_type = "const"
+    var.data_type = DataType.UINT8.default
+    var.default = transmission_type
+    comm_rec.add_member(var)
+
+    if pdo_type == "tpdo":
+        var = Variable("inhibit_time", index, 3)
+        var.access_type = "const"
+        var.data_type = DataType.UINT16.default
+        var.default = inhibit_time
+        var.unit = "ms"
+        comm_rec.add_member(var)
+
+    var = Variable("event_timer", index, 5)
+    var.access_type = "const"
+    var.data_type = DataType.UINT16.default
+    var.default = event_timer
+    var.unit = "ms"
+    comm_rec.add_member(var)
+
+    if pdo_type == "tpdo":
+        var = Variable("sync_start_value", index, 6)
+        var.access_type = "const"
+        var.data_type = DataType.UINT8.default
+        var.default = sync_start_value
+        comm_rec.add_member(var)
+
+    return comm_rec
+
+
+def add_pdo_objs(od: ObjectDictionary, config: OdConfig, pdo_type: str) -> None:
     """Add tpdo objects to OD."""
 
     if pdo_type == "tpdo":
@@ -268,63 +299,36 @@ def _add_pdo_objs(od: ObjectDictionary, config: CardConfig, pdo_type: str) -> No
             mapped_subindex = mapped_obj.subindex
             value = mapped_obj.index << 16
             value += mapped_subindex << 8
-            value += OD_DATA_TYPES[mapped_obj.data_type].size
+            value += DataType(mapped_obj.data_type).size
             var.default = value
             map_rec.add_member(var)
 
         var0.default = len(map_rec) - 1
 
-        # index 0 for comms index
-        var0 = Variable("highest_index_supported", comm_index, 0x0)
-        var0.access_type = "const"
-        var0.data_type = canopen.objectdictionary.UNSIGNED8
-        var0.default = 0x6
-        comm_rec.add_member(var0)
-
-        var = Variable("cob_id", comm_index, 0x1)
-        var.access_type = "const"
-        var.data_type = canopen.objectdictionary.UNSIGNED32
-        node_id = od.node_id
-        if od.device_information.product_name == "GPS" and pdo_type == "tpdo" and pdo.num == 16:
-            # time sync TPDO from GPS uses C3 TPDO 1
-            var.default = 0x181
+        name = f"{pdo_type}_{pdo.num}"
+        if pdo.cob_id == 0:
+            cob_id_offset = 0x180 if pdo_type == "tpdo" else 0x200
+            cob_id = (((pdo.num - 1) % 4) * 0x100) + ((pdo.num - 1) // 4) + cob_id_offset
+            cob_id |= 1 << 30  # rtr bit, 1 for no RTR allowed
         else:
-            var.default = node_id + (((pdo.num - 1) % 4) * 0x100) + ((pdo.num - 1) // 4) + 0x180
-        if pdo_type == "tpdo" and pdo.rtr:
-            var.default |= 1 << 30  # rtr bit, 1 for no RTR allowed
-        comm_rec.add_member(var)
-
-        var = Variable("transmission_type", comm_index, 0x2)
-        var.access_type = "const"
-        var.data_type = canopen.objectdictionary.UNSIGNED8
-        if pdo.transmission_type == "sync":
-            var.default = pdo.sync
-        else:
-            var.default = 254  # event driven
-        comm_rec.add_member(var)
-
-        if pdo_type == "tpdo":
-            var = Variable("inhibit_time", comm_index, 0x3)
-            var.access_type = "const"
-            var.data_type = canopen.objectdictionary.UNSIGNED16
-            var.default = pdo.inhibit_time_ms
-            comm_rec.add_member(var)
-
-        var = Variable("event_timer", comm_index, 0x5)
-        var.access_type = "rw"
-        var.data_type = canopen.objectdictionary.UNSIGNED16
-        var.default = pdo.event_timer_ms
-        comm_rec.add_member(var)
-
-        if pdo_type == "tpdo":
-            var = Variable("sync_start_value", comm_index, 0x6)
-            var.access_type = "const"
-            var.data_type = canopen.objectdictionary.UNSIGNED8
-            var.default = pdo.sync_start_value
-            comm_rec.add_member(var)
+            cob_id = pdo.cob_id
+        transmission_type = pdo.sync if pdo.transmission_type == "sync" else 254
+        inhibit_time = pdo.inhibit_time_ms if pdo_type == "tpdo" else 0
+        sync_start_value = pdo.sync_start_value if pdo_type == "tpdo" else 0
+        comm_rec = _make_pdo_comms_rec(
+            name,
+            pdo_type,
+            comm_index,
+            cob_id,
+            inhibit_time,
+            transmission_type,
+            pdo.event_timer_ms,
+            sync_start_value,
+        )
+        od.add_object(comm_rec)
 
 
-def _add_pdo_gen_objs(
+def add_other_node_pdo_objs(
     od: ObjectDictionary,
     pdo_num: int,
     pdo_node_name: str,
@@ -349,26 +353,20 @@ def _add_pdo_gen_objs(
     else:
         raise ValueError(f"invalid pdo value of {pdo_type}")
 
-    time_sync_tpdo = pdo_type == "rpdo" and pdo_node_od[pdo_comm_index]["cob_id"].default == 0x181
-    if time_sync_tpdo:
-        mapped_index = 0x2010
-        mapped_rec = pdo_node_od[mapped_index]
-        mapped_subindex = 0
-    else:
-        mapped_index = pdo_base_index + pdo_node_od.node_id
-        if mapped_index not in od:
-            mapped_rec = Record(mapped_name, mapped_index)
-            mapped_rec.description = f"{pdo_node_name} {pdo_type} {pdo_num} mapped data"
-            od.add_object(mapped_rec)
+    mapped_index = pdo_base_index + pdo_node_od.node_id
+    if mapped_index not in od:
+        mapped_rec = Record(mapped_name, mapped_index)
+        mapped_rec.description = f"{pdo_node_name} {pdo_type} {pdo_num} mapped data"
+        od.add_object(mapped_rec)
 
-            # index 0 for node data index
-            var = Variable("highest_index_supported", mapped_index, 0x0)
-            var.access_type = "const"
-            var.data_type = canopen.objectdictionary.UNSIGNED8
-            var.default = 0
-            mapped_rec.add_member(var)
-        else:
-            mapped_rec = od[mapped_index]
+        # index 0 for node data index
+        var = Variable("highest_index_supported", mapped_index, 0x0)
+        var.access_type = "const"
+        var.data_type = canopen.objectdictionary.UNSIGNED8
+        var.default = 0
+        mapped_rec.add_member(var)
+    else:
+        mapped_rec = od[mapped_index]
 
     if pdo_type == "rpdo":
         od.device_information.nr_of_RXPDO += 1
@@ -376,34 +374,11 @@ def _add_pdo_gen_objs(
         od.device_information.nr_of_TXPDO += 1
     num = len([i for i in od.indices if comms_start + 16 <= i < para_start]) + 1
 
+    name = f"{pdo_node_name}_{pdo_type}_{pdo_num}"
     comm_index = comms_start + num + 16 - 1
-    comm_rec = Record(f"{pdo_node_name}_{pdo_type}_{pdo_num}_communication_parameters", comm_index)
+    cob_id = pdo_node_od[pdo_comm_index][0x1].default
+    comm_rec = _make_pdo_comms_rec(name, pdo_type, comm_index, cob_id, 0, 254, 0, 0)
     od.add_object(comm_rec)
-
-    var = Variable("cob_id", comm_index, 0x1)
-    var.access_type = "const"
-    var.data_type = canopen.objectdictionary.UNSIGNED32
-    var.default = pdo_node_od[pdo_comm_index][0x1].default  # get value from TPDO def
-    comm_rec.add_member(var)
-
-    var = Variable("transmission_type", comm_index, 0x2)
-    var.access_type = "const"
-    var.data_type = canopen.objectdictionary.UNSIGNED8
-    var.default = 254
-    comm_rec.add_member(var)
-
-    var = Variable("event_timer", comm_index, 0x5)
-    var.access_type = "const"
-    var.data_type = canopen.objectdictionary.UNSIGNED16
-    var.default = 0
-    comm_rec.add_member(var)
-
-    # index 0 for comms index
-    var = Variable("highest_index_supported", comm_index, 0x0)
-    var.access_type = "const"
-    var.data_type = canopen.objectdictionary.UNSIGNED8
-    var.default = sorted(list(comm_rec.subindices))[-1]  # no subindex 3 or 4
-    comm_rec.add_member(var)
 
     mapping_index = para_start + num + 16 - 1
     mapping_rec = Record(f"{pdo_node_name}_{pdo_type}_{pdo_num}_mapping_parameters", mapping_index)
@@ -422,30 +397,28 @@ def _add_pdo_gen_objs(
 
         pdo_mapping_obj = pdo_node_od[pdo_mapping_index][j]
 
-        # master node data
-        if not time_sync_tpdo:
-            mapped_subindex = mapped_rec[0].default + 1
-            pdo_mapped_index = (pdo_mapping_obj.default >> 16) & 0xFFFF
-            pdo_mapped_subindex = (pdo_mapping_obj.default >> 8) & 0xFF
-            if isinstance(pdo_node_od[pdo_mapped_index], Variable):
-                pdo_mapped_obj = pdo_node_od[pdo_mapped_index]
-                name = pdo_mapped_obj.name
-            else:
-                pdo_mapped_obj = pdo_node_od[pdo_mapped_index][pdo_mapped_subindex]
-                name = pdo_node_od[pdo_mapped_index].name + "_" + pdo_mapped_obj.name
-            var = Variable(name, mapped_index, mapped_subindex)
-            var.description = pdo_mapped_obj.description
-            var.access_type = "rw"
-            var.data_type = pdo_mapped_obj.data_type
-            var.default = pdo_mapped_obj.default
-            var.unit = pdo_mapped_obj.unit
-            var.factor = pdo_mapped_obj.factor
-            var.bit_definitions = deepcopy(pdo_mapped_obj.bit_definitions)
-            var.value_descriptions = deepcopy(pdo_mapped_obj.value_descriptions)
-            var.max = pdo_mapped_obj.max
-            var.min = pdo_mapped_obj.min
-            var.pdo_mappable = True
-            mapped_rec.add_member(var)
+        mapped_subindex = mapped_rec[0].default + 1
+        pdo_mapped_index = (pdo_mapping_obj.default >> 16) & 0xFFFF
+        pdo_mapped_subindex = (pdo_mapping_obj.default >> 8) & 0xFF
+        if isinstance(pdo_node_od[pdo_mapped_index], Variable):
+            pdo_mapped_obj = pdo_node_od[pdo_mapped_index]
+            name = pdo_mapped_obj.name
+        else:
+            pdo_mapped_obj = pdo_node_od[pdo_mapped_index][pdo_mapped_subindex]
+            name = pdo_node_od[pdo_mapped_index].name + "_" + pdo_mapped_obj.name
+        var = Variable(name, mapped_index, mapped_subindex)
+        var.description = pdo_mapped_obj.description
+        var.access_type = "rw"
+        var.data_type = pdo_mapped_obj.data_type
+        var.default = pdo_mapped_obj.default
+        var.unit = pdo_mapped_obj.unit
+        var.factor = pdo_mapped_obj.factor
+        var.bit_definitions = deepcopy(pdo_mapped_obj.bit_definitions)
+        var.value_descriptions = deepcopy(pdo_mapped_obj.value_descriptions)
+        var.max = pdo_mapped_obj.max
+        var.min = pdo_mapped_obj.min
+        var.pdo_mappable = True
+        mapped_rec.add_member(var)
 
         # master node mapping obj
         mapping_subindex = mapping_rec[0].default + 1
@@ -458,289 +431,34 @@ def _add_pdo_gen_objs(
             mapped_obj = od[mapped_index]
         else:
             mapped_obj = od[mapped_index][mapped_subindex]
-        value += OD_DATA_TYPES[mapped_obj.data_type].size
+        value += DataType(mapped_obj.data_type).size
         var.default = value
         mapping_rec.add_member(var)
 
-        # update these
-        if not time_sync_tpdo:
-            mapped_rec[0].default += 1
+        mapped_rec[0].default += 1
         mapping_rec[0].default += 1
 
 
-def _load_std_objs(
-    file_path: abc.Traversable, node_ids: dict[str, int]
-) -> dict[str, Union[Variable, Record, Array]]:
-    """Load the standard objects."""
-
-    with resources.as_file(file_path) as path, path.open() as f:
-        std_objs_raw = load(f, Loader=CLoader)
-
-    std_objs = {}
-    for obj_raw in std_objs_raw:
-        obj = from_dict(data_class=IndexObject, data=obj_raw)
+def add_std_objects(od: ObjectDictionary, od_config: OdConfig):
+    std_objs = {obj.name: obj for obj in STD_OBJS}
+    for obj_name in od_config.std_objects:
+        obj = std_objs[obj_name]
         if obj.object_type == "variable":
-            std_objs[obj.name] = _make_var(obj, obj.index)
+            od.add_object(_make_var(obj, obj.index))
         elif obj.object_type == "record":
-            std_objs[obj.name] = _make_rec(obj)
+            od.add_object(_make_rec(obj))
         elif obj.object_type == "array":
-            std_objs[obj.name] = _make_arr(obj, node_ids)
-    return std_objs
+            od.add_object(_make_arr(obj))
 
 
-def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None:
-    """deal with overlays"""
-
-    # overlay object
-    for obj in overlay_config.objects:
-        overlayed = False
-        for obj2 in card_config.objects:
-            if obj.index != obj2.index:
-                continue
-
-            obj2.name = obj.name
-            if obj.object_type == "variable":
-                obj2.data_type = obj.data_type
-                obj2.access_type = obj.access_type
-                obj2.high_limit = obj.high_limit
-                obj2.low_limit = obj.low_limit
-            else:
-                for sub_obj in obj.subindexes:
-                    sub_overlayed = False
-                    for sub_obj2 in obj2.subindexes:
-                        if sub_obj.subindex == sub_obj2.subindex:
-                            sub_obj2.name = sub_obj.name
-                            sub_obj2.data_type = sub_obj.data_type
-                            sub_obj2.access_type = sub_obj.access_type
-                            sub_obj2.high_limit = sub_obj.high_limit
-                            sub_obj2.low_limit = sub_obj.low_limit
-                            overlayed = True
-                            sub_overlayed = True
-                            break  # obj was found, search for next one
-                    if not sub_overlayed:  # add it
-                        obj2.subindexes.append(deepcopy(sub_obj))
-            overlayed = True
-            break  # obj was found, search for next one
-        if not overlayed:  # add it
-            card_config.objects.append(deepcopy(obj))
-
-    # overlay tpdos
-    for overlay_tpdo in overlay_config.tpdos:
-        overlayed = False
-        for card_tpdo in card_config.tpdos:
-            if card_tpdo.num == overlay_tpdo.num:
-                card_tpdo.fields = overlay_tpdo.fields
-                card_tpdo.event_timer_ms = overlay_tpdo.event_timer_ms
-                card_tpdo.inhibit_time_ms = overlay_tpdo.inhibit_time_ms
-                card_tpdo.sync = overlay_tpdo.sync
-                overlayed = True
-                break
-        if not overlayed:  # add it
-            card_config.tpdos.append(deepcopy(overlay_tpdo))
-
-    # overlay tpdos gen
-    for overlay_tpdo_gen in overlay_config.tpdos_gen:
-        card_config.tpdos_gen.append(deepcopy(overlay_tpdo_gen))
-
-    # overlay rpdos
-    for overlay_rpdo in overlay_config.rpdos:
-        overlayed = False
-        for card_rpdo in card_config.rpdos:
-            if card_rpdo.num == overlay_rpdo.num:
-                card_rpdo.fields = overlay_rpdo.fields
-                card_rpdo.event_timer_ms = overlay_rpdo.event_timer_ms
-                overlayed = True
-                break
-        if not overlayed:  # add it
-            card_config.rpdos.append(deepcopy(overlay_rpdo))
-
-    # overlay rpdos gen
-    for overlay_rpdo_gen in overlay_config.rpdos_gen:
-        card_config.rpdos_gen.append(deepcopy(overlay_rpdo_gen))
-
-
-def _load_configs(
-    config_paths: dict[str, Card], overlays: dict[str, abc.Traversable]
-) -> dict[str, CardConfig]:
-    """Generate all ODs for a OreSat mission."""
-
-    configs: dict[str, CardConfig] = {}
-
-    for name, card in config_paths.items():
-        if card.config is None:
-            continue
-
-        with resources.as_file(card.config) as path:
-            card_config = CardConfig.from_yaml(path)
-
-        with resources.as_file(card.common) as path:
-            common_config = CardConfig.from_yaml(path)
-
-        conf = CardConfig()
-        conf.std_objects = list(set(common_config.std_objects + card_config.std_objects))
-        conf.objects = common_config.objects + card_config.objects
-        conf.rpdos = common_config.rpdos + card_config.rpdos
-        conf.rpdos_gen = common_config.rpdos_gen + card_config.rpdos_gen
-        conf.tpdos_gen = common_config.tpdos_gen + card_config.tpdos_gen
-        if name == "c3":
-            conf.fram = card_config.fram
-            conf.tpdos = card_config.tpdos
-        else:
-            conf.tpdos = common_config.tpdos + card_config.tpdos
-
-        if card.base in overlays:
-            with resources.as_file(overlays[card.base]) as path:
-                overlay_config = CardConfig.from_yaml(path)
-            # because conf is cached by CardConfig, if multiple missions are loaded, the cached
-            # version should not be modified because the changes will persist to later loaded
-            # missions.
-            conf = deepcopy(conf)
-            overlay_configs(conf, overlay_config)
-
-        configs[name] = conf
-
-    return configs
-
-
-def _gen_od_db(
-    mission: Mission,
-    cards: dict[str, Card],
-    beacon_def: BeaconConfig,
-    configs: dict[str, CardConfig],
-) -> dict[str, ObjectDictionary]:
-    od_db = {}
-    node_ids = {name: cards[name].node_id for name in configs}
-    node_ids["c3"] = 0x1
-
-    std_objs = _load_std_objs(STD_OBJS_FILE_NAME, node_ids)
-
-    # make od with common and card objects and tpdos
-    for name, config in configs.items():
-        od = ObjectDictionary()
-        od.bitrate = 1_000_000  # bps
-        od.node_id = cards[name].node_id
-        od.device_information.allowed_baudrates = set([1000])
-        od.device_information.vendor_name = "PSAS"
-        od.device_information.vendor_number = 0
-        od.device_information.product_name = cards[name].nice_name
-        od.device_information.product_number = 0
-        od.device_information.revision_number = 0
-        od.device_information.order_code = 0
-        od.device_information.simple_boot_up_master = False
-        od.device_information.simple_boot_up_slave = False
-        od.device_information.granularity = 8
-        od.device_information.dynamic_channels_supported = False
-        od.device_information.group_messaging = False
-        od.device_information.nr_of_RXPDO = 0
-        od.device_information.nr_of_TXPDO = 0
-        od.device_information.LSS_supported = False
-
-        # add common and card records
-        _add_objects(od, config.objects, node_ids)
-
-        # add any standard objects
-        for obj_name in config.std_objects:
-            od[std_objs[obj_name].index] = deepcopy(std_objs[obj_name])
-            if obj_name == "cob_id_emergency_message":
-                od["cob_id_emergency_message"].default = 0x80 + cards[name].node_id
-
-        # add PDSs
-        _add_pdo_objs(od, config, "tpdo")
-        _add_pdo_objs(od, config, "rpdo")
-
-        # set specific obj defaults
-        od["versions"]["configs_version"].default = __version__
-        od["satellite_id"].default = mission.id
-        for sat in Mission:
-            od["satellite_id"].value_descriptions[sat.id] = sat.name.lower()
-        if name == "c3":
-            od["beacon"]["revision"].default = beacon_def.revision
-            od["beacon"]["dest_callsign"].default = beacon_def.ax25.dest_callsign
-            od["beacon"]["dest_ssid"].default = beacon_def.ax25.dest_ssid
-            od["beacon"]["src_callsign"].default = beacon_def.ax25.src_callsign
-            od["beacon"]["src_ssid"].default = beacon_def.ax25.src_ssid
-            od["beacon"]["control"].default = beacon_def.ax25.control
-            od["beacon"]["command"].default = beacon_def.ax25.command
-            od["beacon"]["response"].default = beacon_def.ax25.response
-            od["beacon"]["pid"].default = beacon_def.ax25.pid
-            od["flight_mode"].access_type = "ro"
-
-        od_db[name] = od
-
-    # add all other card PDOs
-    for name, config in configs.items():
-        for tpdo in config.tpdos_gen:
-            _add_pdo_gen_objs(od_db[name], tpdo.rpdo_num, tpdo.card, od_db[tpdo.card], "tpdo")
-
-        if name == "c3":
-            # c3 adds all other nodes tpdos as rpdos to c3 od
-            for other_name, other_od in od_db.items():
-                if other_name == "c3":
-                    continue
-                for i in range(1, 17):
-                    if TPDO_COMM_START + i - 1 not in other_od:
-                        continue
-                    _add_pdo_gen_objs(od_db[name], i, other_name, other_od, "rpdo")
-        else:
-            for rpdo in config.rpdos_gen:
-                _add_pdo_gen_objs(od_db[name], rpdo.tpdo_num, rpdo.card, od_db[rpdo.card], "rpdo")
-
-    # set all object values to its default value
-    for od in od_db.values():
-        for index in od:
-            if not isinstance(od[index], Variable):
-                for subindex in od[index]:
-                    od[index][subindex].value = od[index][subindex].default
-            else:
-                od[index].value = od[index].default
-
-    return od_db
-
-
-def _gen_c3_fram_defs(c3_od: ObjectDictionary, config: CardConfig) -> list[Variable]:
-    """Get the list of objects in saved to fram."""
-
-    fram_objs = []
-
-    for fields in config.fram:
-        obj = None
-        if len(fields) == 1:
-            obj = c3_od[fields[0]]
-        elif len(fields) == 2:
-            obj = c3_od[fields[0]][fields[1]]
-        if obj is not None:
-            fram_objs.append(obj)
-
-    return fram_objs
-
-
-def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> list[Variable]:
-    """Get the list of objects in the beacon from OD."""
-
-    beacon_objs = []
-
-    for fields in beacon_def.fields:
-        obj = None
-        if len(fields) == 1:
-            obj = c3_od[fields[0]]
-        elif len(fields) == 2:
-            obj = c3_od[fields[0]][fields[1]]
-        if obj is not None:
-            beacon_objs.append(obj)
-
-    return beacon_objs
-
-
-def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
-    """Generate all ODs for a OreSat mission."""
-
+def gen_od(configs: list[OdConfig]) -> ObjectDictionary:
     od = ObjectDictionary()
     od.bitrate = 1_000_000  # bps
-    od.node_id = 0x7C
+    od.node_id = 0
     od.device_information.allowed_baudrates = set([1000])  # kpbs
     od.device_information.vendor_name = "PSAS"
     od.device_information.vendor_number = 0
-    od.device_information.product_name = "Firmware Base"
+    od.device_information.product_name = ""
     od.device_information.product_number = 0
     od.device_information.revision_number = 0
     od.device_information.order_code = 0
@@ -753,23 +471,79 @@ def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
     od.device_information.nr_of_TXPDO = 0
     od.device_information.LSS_supported = False
 
-    with resources.as_file(resources.files(base) / "fw_common.yaml") as path:
-        config = CardConfig.from_yaml(path)
+    for config in configs:
+        add_std_objects(od, config)
+        add_objects(od, config.objects)
+        add_pdo_objs(od, config, "tpdo")
+        add_pdo_objs(od, config, "rpdo")
 
-    _add_objects(od, config.objects, {})
-
-    std_objs = _load_std_objs(STD_OBJS_FILE_NAME, {})
-    for name in config.std_objects:
-        od[std_objs[name].index] = deepcopy(std_objs[name])
-        if name == "cob_id_emergency_message":
-            od["cob_id_emergency_message"].default = 0x80 + od.node_id
-
-    # add PDOs
-    _add_pdo_objs(od, config, "tpdo")
-    _add_pdo_objs(od, config, "rpdo")
-
-    # set specific obj defaults
-    od["versions"]["configs_version"].default = __version__
-    od["satellite_id"].default = mission.id
+    # set all object values to its default value
+    for index in od:
+        if not isinstance(od[index], Variable):
+            for subindex in od[index]:
+                od[index][subindex].value = od[index][subindex].default
+        else:
+            od[index].value = od[index].default
 
     return od
+
+
+def gen_master_od(configs: list[OdConfig], od_db: dict[str, ObjectDictionary]) -> ObjectDictionary:
+    od = gen_od(configs)
+    for node_name, node_od in od_db.items():
+        for tpdo_num in range(16):
+            index = TPDO_COMM_START + tpdo_num - 1
+            if index in node_od.indices:
+                add_other_node_pdo_objs(od, tpdo_num, node_name, node_od, "rpdo")
+        for rpdo_num in range(1, node_od.device_information.nr_of_RXPDO + 1):
+            index = TPDO_COMM_START + tpdo_num - 1
+            if index in node_od.indices:
+                add_other_node_pdo_objs(od, rpdo_num, node_name, node_od, "tpdo")
+
+    # set all object values to its default value
+    for index in od:
+        if not isinstance(od[index], Variable):
+            for subindex in od[index]:
+                od[index][subindex].value = od[index][subindex].default
+        else:
+            od[index].value = od[index].default
+
+    return od
+
+
+def set_od_node_id(od: ObjectDictionary, node_id: int):
+    od.node_id = node_id
+    od["cob_id_emergency_message"].default = 0x80 + node_id
+    od["cob_id_emergency_message"].value = 0x80 + node_id
+    for i in range(16):
+        # RPDO
+        cob_id = (((i - 1) % 4) * 0x100) + ((i - 1) // 4) + 0x200
+        index = TPDO_COMM_START + i
+        if index in od.indices and od[index][2].value == cob_id:
+            od[index][2].default += node_id
+            od[index][2].value += node_id
+        # TPDO
+        cob_id = (((i - 1) % 4) * 0x100) + ((i - 1) // 4) + 0x180
+        index = TPDO_COMM_START + i
+        if index in od.indices and od[index][2].value == cob_id:
+            od[index][2].default += node_id
+            od[index][2].value += node_id
+
+
+def get_objs(od: ObjectDictionary, fields: list[list[str]]) -> list[Variable]:
+    objs = []
+    for field in fields:
+        if len(field) == 1:
+            obj = od[field[0]]
+        elif len(field) == 2:
+            obj = od[field[0]][field[1]]
+        objs.append(obj)
+    return objs
+
+
+def get_fram_defs(c3_od: ObjectDictionary, c3_config: OdConfig) -> list[Variable]:
+    return get_objs(c3_od, c3_config.fram)
+
+
+def get_beacon_defs(c3_od: ObjectDictionary, beacon_config: BeaconConfig) -> list[Variable]:
+    return get_objs(c3_od, beacon_config.fields)

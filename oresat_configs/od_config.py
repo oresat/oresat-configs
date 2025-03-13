@@ -1,5 +1,3 @@
-"""Load a card config file."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,20 +11,23 @@ from yaml import CLoader, load
 
 @dataclass
 class ConfigObject:
-    """Object in config."""
+    """Base object class in config."""
 
     data_type: str = "uint32"
     """Data type of the object."""
-    length: int = 1
-    """Length of an octet string object (only used when `data_type` is set to ``"octet_str"``)."""
+    str_length: int = 1
+    """
+    Length of an string or octet string object.
+    Only used when `data_type` is set to ``"str"`` or ``"octet_str"``.
+    """
     access_type: str = "rw"
     """
     Access type of object over the CAN bus, can be ``"rw"``, ``"ro"``, ``"wo"``, or ``"const"``.
     """
     default: Any = None
-    """Default value of object."""
+    """Default value of the object."""
     description: str = ""
-    """Description of object."""
+    """Description of the object."""
     value_descriptions: dict[str, int] = field(default_factory=dict)
     """Optional: Can be used to define enum values for an unsigned integer data types."""
     bit_definitions: dict[str, Union[int, str]] = field(default_factory=dict)
@@ -34,7 +35,7 @@ class ConfigObject:
     unit: str = ""
     """Optional engineering unit for the object."""
     scale_factor: float = 1
-    """Can be used to scale a integer value to a engineering (float) value."""
+    """Can be used to scale a raw integer value to a engineering (float) value."""
     low_limit: Optional[int] = None
     """
     The lower raw limit for value. No need to set this if it limit is the lower limit of the data
@@ -60,9 +61,8 @@ class GenerateSubindex(ConfigObject):
         name: my_array
         object_type: array
         generate_subindexes:
-            subindexes: fixed_length
+            subindexes: 10
             name: item
-            length: 10
             data_type: uint16
             access_type: ro
             unit: C
@@ -184,9 +184,14 @@ class Rpdo:
     fields: list[list[str]] = field(default_factory=list)
     """Index and subindexes of objects to map to the TPDO."""
     transmission_type: str = "timer"
-    """Transmission type of TPDO. Must be ``"timer"`` or ``"sync"``."""
+    """Transmission type of PDO. Must be ``"timer"`` or ``"sync"``."""
     event_timer_ms: int = 0
-    """Send the TPDO periodicly in milliseconds."""
+    """Send the PDO periodicly in milliseconds."""
+    cob_id: int = 0
+    """
+    Explicitly set the PDO COB-ID. This generally should not be set.
+    Used to make sure all linux cards have the COB-ID for the Time Sync PDO.
+    """
 
 
 @dataclass
@@ -218,45 +223,9 @@ class Tpdo(Rpdo):
 
 
 @dataclass
-class TpdoGen:
+class OdConfig:
     """
-    Example:
-
-    .. code-block:: yaml
-
-        tpdo_gen:
-          - card: gps
-            rpdo_num: 1
-    """
-
-    card: str
-    """Card the TPDO is from."""
-    rpdo_num: int
-    """TPDO number, 1-16."""
-
-
-@dataclass
-class RpdoGen:
-    """
-    Example:
-
-    .. code-block:: yaml
-
-        rpdo_gen:
-          - card: c3
-            tpdo_num: 3
-    """
-
-    card: str
-    """Card the TPDO is from."""
-    tpdo_num: int
-    """TPDO number, 1-16."""
-
-
-@dataclass
-class CardConfig:
-    """
-    YAML card config.
+    YAML od config.
 
     Example:
 
@@ -278,22 +247,10 @@ class CardConfig:
              - [satellite_id]
           ...
 
-        tpdo_gen:
-          - num: 1
-            card: gps
-            rpdo_num: 1
-          ...
-
         rpdos:
           - num: 1
             fields:
              - [control, state]
-          ...
-
-        rpdos_gen:
-          - num: 1
-            card: c3
-            tpdo_num: 1
           ...
     """
 
@@ -303,20 +260,17 @@ class CardConfig:
     """Unique card objects."""
     tpdos: list[Tpdo] = field(default_factory=list)
     """PDOs defined by the node, for the card to boardcast."""
-    tpdos_gen: list[TpdoGen] = field(default_factory=list)
-    """PDOs defined by another node, for the card to boardcast."""
     rpdos: list[Rpdo] = field(default_factory=list)
     """PDOs defined by the node, for the card to consume."""
-    rpdos_gen: list[RpdoGen] = field(default_factory=list)
-    """PDOs defined by another node, for the card to consume."""
     fram: list[list[str]] = field(default_factory=list)
     """C3 only. List of index and subindex for the c3 to save the values of to F-RAM."""
 
     @classmethod
     @cache
-    def from_yaml(cls, config_path: Path) -> CardConfig:
+    def from_yaml(cls, config_path: Union[str, Path]) -> OdConfig:
         """Load a card YAML config file."""
-
+        if isinstance(config_path, str):
+            config_path = Path(config_path)
         with config_path.open() as f:
             config_raw = load(f, Loader=CLoader)
         return from_dict(data_class=cls, data=config_raw)

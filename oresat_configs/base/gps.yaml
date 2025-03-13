@@ -222,3 +222,4 @@ tpdos:
     fields:
       - [scet]
     sync: 1
+    cob_id: 0x181

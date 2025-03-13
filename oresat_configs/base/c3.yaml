@@ -227,28 +227,28 @@ objects:
         data_type: octet_str
         description: edl crypto key 0
         access_type: wo
-        length: 32
+        str_length: 32
 
       - subindex: 0x2
         name: crypto_key_1
         data_type: octet_str
         description: edl crypto key 1
         access_type: wo
-        length: 32
+        str_length: 32
 
       - subindex: 0x3
         name: crypto_key_2
         data_type: octet_str
         description: edl crypto key 2
         access_type: wo
-        length: 32
+        str_length: 32
 
       - subindex: 0x4
         name: crypto_key_3
         data_type: octet_str
         description: edl crypto key 3
         access_type: wo
-        length: 32
+        str_length: 32
 
       - subindex: 0x5
         name: active_crypto_key
@@ -579,8 +579,8 @@ objects:
     object_type: array
     description: OreSat node status
     generate_subindexes:
-      subindexes: node_ids
-      names: node_ids
+      subindexes: 0x7F
+      names: node_id
       data_type: uint8
       access_type: ro
       value_descriptions:
@@ -644,6 +644,7 @@ tpdos:
   - num: 1  # time sync TPDO
     fields:
       - [scet]
+    cob_id: 0x181
 
   - num: 2
     fields:

@@ -11,22 +11,20 @@ except ImportError as e:
         "pyyaml missing/installed without libyaml bindings. See oresat-configs README.md for more"
     ) from e
 
-from dataclasses import dataclass
+import os
 from importlib.resources import as_file
 from typing import Union
 
-from ._yaml_to_od import (
-    _gen_c3_beacon_defs,
-    _gen_c3_fram_defs,
-    _gen_fw_base_od,
-    _gen_od_db,
-    _load_configs,
-)
+from ._yaml_to_od import gen_master_od, gen_od, get_beacon_defs, get_fram_defs, set_od_node_id
 from .beacon_config import BeaconConfig
 from .card_info import Card, cards_from_csv
 from .constants import Mission, __version__
+from .od_config import OdConfig
 
 __all__ = ["Card", "Mission", "__version__"]
+
+DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = DIR + "/base"
 
 
 class OreSatConfig:
@@ -54,9 +52,27 @@ class OreSatConfig:
             beacon_config = BeaconConfig.from_yaml(path)
         with as_file(self.mission.cards) as path:
             self.cards = cards_from_csv(path)
-        self.configs = _load_configs(self.cards, self.mission.overlays)
-        self.od_db = _gen_od_db(self.mission, self.cards, beacon_config, self.configs)
-        c3_od = self.od_db["c3"]
-        self.beacon_def = _gen_c3_beacon_defs(c3_od, beacon_config)
-        self.fram_def = _gen_c3_fram_defs(c3_od, self.configs["c3"])
-        self.fw_base_od = _gen_fw_base_od(self.mission)
+
+        od_configs = {}
+        for config_file in os.listdir(BASE_DIR):
+            name = config_file.split(".")[0]
+            od_configs[name] = OdConfig.from_yaml(os.path.join(BASE_DIR, config_file))
+
+        self.od_db = {}
+        for name, card in self.cards.items():
+            if name == "c3" or card.processor == "none":
+                continue
+
+            if card.processor == "stm32":
+                od = gen_od([od_configs["fw_common"], od_configs[card.base]])
+            elif card.processor == "octavo":
+                od = gen_od([od_configs["sw_common"], od_configs[card.base]])
+            set_od_node_id(od, card.node_id)
+            self.od_db[name] = od
+
+        c3_od = gen_master_od([od_configs["sw_common"], od_configs["c3"]], self.od_db)
+        self.od_db["c3"] = c3_od
+        self.fram_def = get_fram_defs(c3_od, od_configs["c3"])
+        self.beacon_def = get_beacon_defs(c3_od, beacon_config)
+
+        self.fw_base_od = gen_od([od_configs["fw_common"]])

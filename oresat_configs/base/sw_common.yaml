@@ -293,6 +293,8 @@ tpdos:
       - [updater, cache_length]
     event_timer_ms: 5000
 
-rpdos_gen:
-  - card: c3
-    tpdo_num: 1  # the time sync TPDO
+rpdos:
+  - num: 1 # the time sync TPDO
+    fields:
+      - [scet]
+    cob_id: 0x181
