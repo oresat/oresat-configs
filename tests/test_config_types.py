@@ -7,10 +7,10 @@ from typing import Any
 from dacite import from_dict  # , Config
 from yaml import Loader, load
 
-from oresat_configs import _yaml_to_od, base
+from oresat_configs import base
 from oresat_configs.beacon_config import BeaconConfig
-from oresat_configs.card_config import CardConfig, IndexObject
 from oresat_configs.constants import Mission
+from oresat_configs.od_config import OdConfig
 
 
 class ConfigTypes(unittest.TestCase):
@@ -45,16 +45,8 @@ class ConfigTypes(unittest.TestCase):
         for path in beacon_paths:
             self.check_types(path, BeaconConfig)
 
-    def test_card_config(self) -> None:
-        """Tests all the card configs, with dataclass CardConfig"""
+    def test_od_config(self) -> None:
+        """Tests all the card configs, with dataclass OdConfig"""
         card_paths = [f for f in resources.files(base).iterdir() if f.name.endswith(".yaml")]
-        for m in Mission:
-            card_paths.extend(m.overlays.values())
         for path in card_paths:
-            self.check_types(path, CardConfig)
-
-    def test_standard_types(self) -> None:
-        """Tests the standard objects config. Each entry gets its own IndexObject"""
-        path = _yaml_to_od.STD_OBJS_FILE_NAME
-        for data in self.load_yaml(path):
-            self.dtype_subtest(path, IndexObject, data)
+            self.check_types(path, OdConfig)

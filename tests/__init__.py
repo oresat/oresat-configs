@@ -6,7 +6,7 @@ import unittest
 import canopen
 
 from oresat_configs import Mission, OreSatConfig
-from oresat_configs._yaml_to_od import OD_DATA_TYPES, TPDO_COMM_START, TPDO_PARA_START
+from oresat_configs._yaml_to_od import TPDO_COMM_START, TPDO_PARA_START, DataType
 
 INT_MIN_MAX = {
     canopen.objectdictionary.INTEGER8: (-(2**7), 2**7 - 1),
@@ -50,13 +50,15 @@ class TestConfig(unittest.TestCase):
                     mapped_index = (raw & 0xFFFF0000) >> 16
                     mapped_subindex = (raw & 0x0000FF00) >> 8
                     mapped_obj = od[mapped_index]
+                    mapped_obj_name = mapped_obj.name
                     if not isinstance(mapped_obj, canopen.objectdictionary.Variable):
                         mapped_obj = mapped_obj[mapped_subindex]
+                        mapped_obj_name += "_" + mapped_obj.name
                     self.assertTrue(
                         mapped_obj.pdo_mappable,
-                        f"{self.oresatid.name} {name} {mapped_obj.name} is not pdo mappable",
+                        f"{self.oresatid.name} {name} {mapped_obj_name} is not pdo mappable",
                     )
-                    size += OD_DATA_TYPES[mapped_obj.data_type].size
+                    size += DataType(mapped_obj.data_type).size
                 self.assertLessEqual(
                     size, 64, f"{self.oresatid.name} {name} TPDO{i + 1} is more than 64 bits"
                 )
@@ -88,7 +90,7 @@ class TestConfig(unittest.TestCase):
                     dynamic_len_data_types,
                     f"{self.oresatid.name} {obj.name} is a dynamic length data type",
                 )
-                length += OD_DATA_TYPES[obj.data_type].size // 8  # bits to bytes
+                length += DataType(obj.data_type).size // 8  # bits to bytes
 
         # AX.25 payload max length = 255
         # CRC32 length = 4
@@ -112,7 +114,7 @@ class TestConfig(unittest.TestCase):
         """Test that a variable is valid."""
 
         self.assertIsInstance(obj, canopen.objectdictionary.Variable)
-        self.assertIn(obj.data_type, OD_DATA_TYPES.keys())
+        self.assertIn(obj.data_type, DataType)
         self.assertIn(obj.access_type, ["ro", "wo", "rw", "rwr", "rww", "const"])
         self.assertIsInstance(obj.data_type, int)
         self._test_snake_case(obj.name)

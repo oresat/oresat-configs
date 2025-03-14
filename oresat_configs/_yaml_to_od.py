@@ -35,7 +35,7 @@ class DataType(Enum):
     @property
     def size(self) -> int:
         size = 0
-        if self.name.endswith("8"):
+        if self.name.endswith("8") or self.name == "BOOL":
             size = 8
         elif self.name.endswith("16"):
             size = 16
@@ -52,7 +52,9 @@ class DataType(Enum):
     @property
     def default(self) -> Any:
         default: Any = 0
-        if self.name.startswith("FLOAT"):
+        if self.name == "BOOL":
+            default = False
+        elif self.name.startswith("FLOAT"):
             default = 0.0
         elif self.name == "STR":
             default = ""
@@ -103,7 +105,7 @@ def _make_var(obj: Union[IndexObject, SubindexObject], index: int, subindex: int
         var.factor = obj.scale_factor
     var.data_type = DataType[obj.data_type.upper()].value
     _set_var_default(obj, var)
-    if DataType[obj.data_type.upper()].has_dynamic_len:
+    if not DataType[obj.data_type.upper()].has_dynamic_len:
         var.pdo_mappable = True
     if obj.value_descriptions:
         var.max = obj.high_limit or max(obj.value_descriptions.values())
@@ -120,7 +122,7 @@ def _make_rec(obj: IndexObject) -> Record:
 
     var0 = Variable("highest_index_supported", index, 0x0)
     var0.access_type = "const"
-    var0.data_type = canopen.objectdictionary.UNSIGNED8
+    var0.data_type = DataType.UINT8.value
     rec.add_member(var0)
 
     for sub_obj in obj.subindexes:
@@ -139,7 +141,7 @@ def _make_arr(obj: IndexObject) -> Array:
 
     var0 = Variable("highest_index_supported", index, 0x0)
     var0.access_type = "const"
-    var0.data_type = canopen.objectdictionary.UNSIGNED8
+    var0.data_type = DataType.UINT8.value
     arr.add_member(var0)
 
     subindexes = []
@@ -166,7 +168,7 @@ def _make_arr(obj: IndexObject) -> Array:
                 var.max = gen_sub.high_limit
                 var.min = gen_sub.low_limit
             _set_var_default(gen_sub, var)
-            if DataType[gen_sub.data_type.upper()].has_dynamic_len:
+            if not DataType[obj.data_type.upper()].has_dynamic_len:
                 var.pdo_mappable = True
             arr.add_member(var)
             var0.default = subindex
@@ -219,7 +221,7 @@ def _make_pdo_comms_rec(
 
     var = Variable("cob_id", index, 1)
     var.access_type = "const"
-    var.data_type = DataType.UINT8.value
+    var.data_type = DataType.UINT32.value
     var.default = cob_id
     comm_rec.add_member(var)
 
@@ -284,14 +286,14 @@ def add_pdo_objs(od: ObjectDictionary, config: OdConfig, pdo_type: str) -> None:
         # index 0 for mapping index
         var0 = Variable("highest_index_supported", map_index, 0x0)
         var0.access_type = "const"
-        var0.data_type = canopen.objectdictionary.UNSIGNED8
+        var0.data_type = DataType.UINT8.value
         map_rec.add_member(var0)
 
         for p_field in pdo.fields:
             subindex = pdo.fields.index(p_field) + 1
             var = Variable(f"mapping_object_{subindex}", map_index, subindex)
             var.access_type = "const"
-            var.data_type = canopen.objectdictionary.UNSIGNED32
+            var.data_type = DataType.UINT32.value
             if len(p_field) == 1:
                 mapped_obj = od[p_field[0]]
             elif len(p_field) == 2:
@@ -364,7 +366,7 @@ def add_other_node_pdo_objs(
         # index 0 for node data index
         var = Variable("highest_index_supported", mapped_index, 0x0)
         var.access_type = "const"
-        var.data_type = canopen.objectdictionary.UNSIGNED8
+        var.data_type = DataType.UINT8.value
         var.default = 0
         mapped_rec.add_member(var)
     else:
@@ -389,7 +391,7 @@ def add_other_node_pdo_objs(
     # index 0 for map index
     var = Variable("highest_index_supported", mapping_index, 0x0)
     var.access_type = "const"
-    var.data_type = canopen.objectdictionary.UNSIGNED8
+    var.data_type = DataType.UINT8.value
     var.default = 0
     mapping_rec.add_member(var)
 
@@ -426,7 +428,7 @@ def add_other_node_pdo_objs(
         mapping_subindex = mapping_rec[0].default + 1
         var = Variable(f"mapping_object_{mapping_subindex}", mapping_index, mapping_subindex)
         var.access_type = "const"
-        var.data_type = canopen.objectdictionary.UNSIGNED32
+        var.data_type = DataType.UINT32.value
         value = mapped_index << 16
         value += mapped_subindex << 8
         if mapped_subindex == 0:
