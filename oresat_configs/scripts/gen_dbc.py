@@ -198,7 +198,7 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
     ]
 
     # list of cards
-    cards = config.cards
+    cards = [card.name for card in config.cards]
     lines.append("BU_: " + " ".join(cards) + " ")
     lines.append("")
 

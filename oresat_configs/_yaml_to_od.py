@@ -36,13 +36,13 @@ class DataType(Enum):
     def size(self) -> int:
         size = 0
         if self.name.endswith("8"):
-            size = 1
-        elif self.name.endswith("16"):
-            size = 2
-        elif self.name.endswith("32"):
-            size = 4
-        elif self.name.endswith("64"):
             size = 8
+        elif self.name.endswith("16"):
+            size = 16
+        elif self.name.endswith("32"):
+            size = 32
+        elif self.name.endswith("64"):
+            size = 64
         return size
 
     @property
@@ -65,7 +65,9 @@ class DataType(Enum):
 
 def _set_var_default(obj: ConfigObject, var: Variable) -> None:
     default = obj.default
-    if obj.data_type in ["str", "octet_str"]:
+    if obj.data_type in "str" and obj.str_length > 1:
+        default = " " * obj.str_length
+    elif obj.data_type == "octet_str" and obj.str_length > 1:
         default = b"\x00" * obj.str_length
     elif default is None:
         default = DataType(var.data_type).default
@@ -211,33 +213,33 @@ def _make_pdo_comms_rec(
 
     var0 = Variable("highest_index_supported", index, 0)
     var0.access_type = "const"
-    var0.data_type = DataType.UINT8.default
+    var0.data_type = DataType.UINT8.value
     var0.default = 6 if pdo_type == "tpdo" else 5
     comm_rec.add_member(var0)
 
-    var = Variable("transmission_type", index, 1)
+    var = Variable("cob_id", index, 1)
     var.access_type = "const"
-    var.data_type = DataType.UINT8.default
+    var.data_type = DataType.UINT8.value
     var.default = cob_id
     comm_rec.add_member(var)
 
     var = Variable("transmission_type", index, 2)
     var.access_type = "const"
-    var.data_type = DataType.UINT8.default
+    var.data_type = DataType.UINT8.value
     var.default = transmission_type
     comm_rec.add_member(var)
 
     if pdo_type == "tpdo":
         var = Variable("inhibit_time", index, 3)
         var.access_type = "const"
-        var.data_type = DataType.UINT16.default
+        var.data_type = DataType.UINT16.value
         var.default = inhibit_time
         var.unit = "ms"
         comm_rec.add_member(var)
 
     var = Variable("event_timer", index, 5)
     var.access_type = "const"
-    var.data_type = DataType.UINT16.default
+    var.data_type = DataType.UINT16.value
     var.default = event_timer
     var.unit = "ms"
     comm_rec.add_member(var)
@@ -245,7 +247,7 @@ def _make_pdo_comms_rec(
     if pdo_type == "tpdo":
         var = Variable("sync_start_value", index, 6)
         var.access_type = "const"
-        var.data_type = DataType.UINT8.default
+        var.data_type = DataType.UINT8.value
         var.default = sync_start_value
         comm_rec.add_member(var)
 

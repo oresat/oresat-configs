@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from tabulate import tabulate
 
-from ..card_info import Card, cards_from_csv
+from ..card_info import Card, load_cards_config
 from ..constants import Mission
 
 LIST_CARDS = "list oresat cards, suitable as arguments to other commands"
@@ -66,7 +66,7 @@ def list_cards(args: Optional[Namespace] = None) -> None:
         args = build_parser(ArgumentParser()).parse_args()
 
     with Mission.from_string(args.oresat).cards as path:
-        cards = cards_from_csv(path)
+        cards = load_cards_config(path)
     data: dict[str, list[str]] = defaultdict(list)
     data["name"] = list(cards)
     for card in cards.values():

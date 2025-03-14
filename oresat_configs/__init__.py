@@ -17,7 +17,7 @@ from typing import Union
 
 from ._yaml_to_od import gen_master_od, gen_od, get_beacon_defs, get_fram_defs, set_od_node_id
 from .beacon_config import BeaconConfig
-from .card_info import Card, cards_from_csv
+from .card_info import Card, load_cards_config
 from .constants import Mission, __version__
 from .od_config import OdConfig
 
@@ -25,6 +25,7 @@ __all__ = ["Card", "Mission", "__version__"]
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = DIR + "/base"
+CARDS_FILE = DIR + "/cards.yaml"
 
 
 class OreSatConfig:
@@ -50,8 +51,7 @@ class OreSatConfig:
 
         with as_file(self.mission.beacon) as path:
             beacon_config = BeaconConfig.from_yaml(path)
-        with as_file(self.mission.cards) as path:
-            self.cards = cards_from_csv(path)
+        cards = load_cards_config(CARDS_FILE)
 
         od_configs = {}
         for config_file in os.listdir(BASE_DIR):
@@ -59,8 +59,8 @@ class OreSatConfig:
             od_configs[name] = OdConfig.from_yaml(os.path.join(BASE_DIR, config_file))
 
         self.od_db = {}
-        for name, card in self.cards.items():
-            if name == "c3" or card.processor == "none":
+        for card in cards:
+            if card.name == "c3" or card.processor == "none":
                 continue
 
             if card.processor == "stm32":
@@ -68,7 +68,9 @@ class OreSatConfig:
             elif card.processor == "octavo":
                 od = gen_od([od_configs["sw_common"], od_configs[card.base]])
             set_od_node_id(od, card.node_id)
-            self.od_db[name] = od
+            self.od_db[card.name] = od
+
+        self.cards = [card for card in cards if self.mission.filename() in card.missions]
 
         c3_od = gen_master_od([od_configs["sw_common"], od_configs["c3"]], self.od_db)
         self.od_db["c3"] = c3_od

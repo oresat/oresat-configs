@@ -580,7 +580,7 @@ objects:
     description: OreSat node status
     generate_subindexes:
       subindexes: 0x7F
-      names: node_id
+      name: node_id
       data_type: uint8
       access_type: ro
       value_descriptions:
@@ -639,6 +639,13 @@ objects:
         description: json string of feedback signals
         access_type: ro
         default: "{}"
+
+  - index: 0x400f
+    name: padding_byte
+    objects_type: variable
+    data_type: uint8
+    description: padding byte to use in fram and beacon def when depercating fieldss
+    access_type: const
 
 tpdos:
   - num: 1  # time sync TPDO
