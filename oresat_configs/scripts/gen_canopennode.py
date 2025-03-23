@@ -1,62 +1,50 @@
 """Generate a OreSat card's CANopenNode OD.[c/h] files"""
 
 import os
-import sys
-from argparse import ArgumentParser, Namespace
+from argparse import Namespace
 from itertools import chain
-from typing import Any, Optional
+from typing import Any
 
 import canopen
-from canopen.objectdictionary.datatypes import DOMAIN, OCTET_STRING, UNICODE_STRING, VISIBLE_STRING
+from canopen.objectdictionary.datatypes import (
+    DOMAIN,
+    OCTET_STRING,
+    UNICODE_STRING,
+    VISIBLE_STRING,
+)
 
-from .. import Mission, OreSatConfig
+from .._yaml_to_od import gen_od
+from . import INDENT4, INDENT8
 
-GEN_FW_FILES = "generate CANopenNode OD.[c/h] files for a OreSat firmware card"
-
-
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
-
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
-    """
-    parser.description = GEN_FW_FILES
-    parser.add_argument(
-        "--oresat",
-        default=Mission.default().arg,
-        choices=[m.arg for m in Mission],
-        type=lambda x: x.lower().removeprefix("oresat"),
-        help="Oresat Mission. (Default: %(default)s)",
-    )
-    parser.add_argument(
-        "card", help="card name; c3, battery, solar, adcs, reaction_wheel, or diode_test"
-    )
-    parser.add_argument("-d", "--dir-path", default=".", help='output directory path, default: "."')
-    parser.add_argument(
-        "-hw", "--hardware-version", help="hardware board version string, usually defined in make"
-    )
-    parser.add_argument(
-        "-fw", "--firmware-version", help="firmware version string, usually git describe output"
-    )
-    return parser
+CANOPENNODE_FILES = "generate CANopenNode OD.[c/h] files"
 
 
 def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
+    """Registers an ArgumentParser as a subcommand of another parser."""
 
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("fw-files", help=GEN_FW_FILES))
-    parser.set_defaults(func=gen_fw_files)
+    parser = subparsers.add_parser("canopennode", help=CANOPENNODE_FILES)
+    parser.description = CANOPENNODE_FILES
+    parser.add_argument(
+        "configs", metavar="PATH", nargs="+", help="path to od yaml config(s)"
+    )
+    parser.add_argument(
+        "-d",
+        "--dir-path",
+        default=".",
+        help='output directory path, default: "%(default)s"',
+    )
+    parser.add_argument(
+        "-hw",
+        "--hardware-version",
+        help="hardware board version string, usually defined in make",
+    )
+    parser.add_argument(
+        "-fw",
+        "--firmware-version",
+        help="firmware version string, usually git describe output",
+    )
+    parser.set_defaults(func=gen_canopennode_files)
 
-
-INDENT4 = " " * 4
-INDENT8 = " " * 8
-INDENT12 = " " * 12
 
 _SKIP_INDEXES = [0x1F81, 0x1F82, 0x1F89]
 """CANopenNode skips the data (it just set to NULL) for these indexes for some reason"""
@@ -124,7 +112,9 @@ def initializer(obj: canopen.objectdictionary.Variable) -> str:
     if obj.data_type == canopen.objectdictionary.datatypes.OCTET_STRING:
         return "{" + ", ".join(f"0x{b:02X}" for b in obj.default) + "}"
     if obj.data_type == canopen.objectdictionary.datatypes.UNICODE_STRING:
-        return "{" + ", ".join(f"0x{ord(c):04X}" for c in chain(obj.default, "\0")) + "}"
+        return (
+            "{" + ", ".join(f"0x{ord(c):04X}" for c in chain(obj.default, "\0")) + "}"
+        )
     if obj.data_type in canopen.objectdictionary.datatypes.INTEGER_TYPES:
         return f"0x{obj.default:X}"
     if obj.data_type == canopen.objectdictionary.datatypes.BOOLEAN:
@@ -201,13 +191,18 @@ def _var_attr_flags(var: canopen.objectdictionary.Variable) -> str:
 
     if var.data_type in (VISIBLE_STRING, UNICODE_STRING):
         attrs.append("ODA_STR")
-    elif var.data_type in (DOMAIN, OCTET_STRING) or (DATA_TYPE_C_SIZE[var.data_type] // 8) > 1:
+    elif (
+        var.data_type in (DOMAIN, OCTET_STRING)
+        or (DATA_TYPE_C_SIZE[var.data_type] // 8) > 1
+    ):
         attrs.append("ODA_MB")
 
     return " | ".join(attrs)
 
 
-def data_orig(index: int, obj: canopen.objectdictionary.Variable, name: str, arr: str = "") -> str:
+def data_orig(
+    index: int, obj: canopen.objectdictionary.Variable, name: str, arr: str = ""
+) -> str:
     """Generates the dataOrig field for an OD_obj_*_t"""
 
     if index in _SKIP_INDEXES or obj.data_type == DOMAIN:
@@ -252,7 +247,8 @@ def obj_entry_body(index: int, obj: canopen.objectdictionary.Variable) -> list[s
             for i, sub in obj.items()
             for line in [
                 "{",
-                f"{INDENT4}.dataOrig = " + data_orig(index, sub, f"{obj.name}.{sub.name}"),
+                f"{INDENT4}.dataOrig = "
+                + data_orig(index, sub, f"{obj.name}.{sub.name}"),
                 f"{INDENT4}.subIndex = {i},",
                 f"{INDENT4}.attribute = {_var_attr_flags(sub)},",
                 f"{INDENT4}.dataLength = {_var_data_type_len(sub)}",
@@ -364,7 +360,9 @@ def decl_type(obj: canopen.objectdictionary.Variable, name: str) -> list[str]:
     if obj.data_type == DOMAIN:
         return []  # skip domains
     if obj.data_type in (VISIBLE_STRING, UNICODE_STRING):
-        return [f"{INDENT4}{ctype[obj.data_type]} {name}[{len(obj.default) + 1}];"]  # + 1 for '\0'
+        return [
+            f"{INDENT4}{ctype[obj.data_type]} {name}[{len(obj.default) + 1}];"
+        ]  # + 1 for '\0'
     if obj.data_type == OCTET_STRING:
         return [f"{INDENT4}{ctype[obj.data_type]} {name}[{len(obj.default)}];"]
     return [f"{INDENT4}{ctype[obj.data_type]} {name};"]
@@ -427,8 +425,7 @@ def write_canopennode_h(od: canopen.ObjectDictionary, dir_path: str = ".") -> No
     lines.append("#endif")
     lines.append("")
     lines.append(
-        "#define STATIC_ASSERT(expression) "
-        '_Static_assert((expression), "(" #expression ") failed")'
+        '#define STATIC_ASSERT(expression) _Static_assert((expression), "(" #expression ") failed")'
     )
     lines.append("")
 
@@ -562,7 +559,9 @@ def _make_bitfields_lines(obj: canopen.objectdictionary.Variable) -> list[str]:
     lines.append(INDENT4 + "struct __attribute((packed)) {")
     total_bits = 0
 
-    sorted_keys = sorted(obj.bit_definitions, key=lambda k: max(obj.bit_definitions.get(k)))
+    sorted_keys = sorted(
+        obj.bit_definitions, key=lambda k: max(obj.bit_definitions.get(k))
+    )
     bit_defs = {key: obj.bit_definitions[key] for key in sorted_keys}
 
     for name, bits in bit_defs.items():
@@ -583,58 +582,13 @@ def _make_bitfields_lines(obj: canopen.objectdictionary.Variable) -> list[str]:
     return lines
 
 
-def gen_fw_files(args: Optional[Namespace] = None) -> None:
-    """generate CANopenNode firmware files main"""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
+def gen_canopennode_files(args: Namespace) -> None:
+    od = gen_od(args.configs)
 
-    config = OreSatConfig(args.oresat)
-
-    arg_card = args.card.lower().replace("-", "_")
-    if arg_card == "c3":
-        od = config.od_db["c3"]
-    elif arg_card in ["solar", "solar_module"]:
-        od = config.od_db["solar_1"]
-    elif arg_card in ["battery", "bat"]:
-        od = config.od_db["battery_1"]
-    elif arg_card in ["imu", "adcs"]:
-        od = config.od_db["adcs"]
-    elif arg_card in ["rw", "reaction_wheel"]:
-        od = config.od_db["rw_1"]
-    elif arg_card in ["diode", "diode_test"]:
-        od = config.od_db["diode_test"]
-    elif arg_card == "base":
-        od = config.fw_base_od
-    else:
-        print(f"invalid oresat card: {args.card}")
-        sys.exit()
-
+    versions_rec = od["versions"]
     if args.hardware_version is not None:
-        od["versions"]["hw_version"].default = args.hardware_version
+        versions_rec["hw_version"].default = args.hardware_version
     if args.firmware_version is not None:
-        od["versions"]["fw_version"].default = args.firmware_version
-
-    # remove node id from emcy cob id
-    if 0x1014 in od:
-        od[0x1014].default = 0x80
-
-    max_pdos = 12 if arg_card == "c3" else 16
-    tpdo_cob_ids = [0x180 + (0x100 * (i % 4)) + (i // 4) + od.node_id for i in range(max_pdos)]
-    rpdo_cob_ids = [i + 0x80 for i in tpdo_cob_ids]
-
-    def _remove_pdo_cob_ids(start: int, num: int, cob_ids: list[int]):
-        for index in range(start, start + num):
-            obj = od[index]
-            default = obj[1].default
-            if default & 0x7FF in cob_ids:
-                cob_id = (default - od.node_id) & 0xFFC
-                cob_id += default & 0xC0_00_00_00  # add back pdo flags (2 MSBs)
-            else:
-                cob_id = default
-            obj[1].default = cob_id
-
-    # remove node id from pdo cob ids
-    _remove_pdo_cob_ids(0x1400, od.device_information.nr_of_RXPDO, rpdo_cob_ids)
-    _remove_pdo_cob_ids(0x1800, od.device_information.nr_of_TXPDO, tpdo_cob_ids)
+        versions_rec["fw_version"].default = args.firmware_version
 
     write_canopennode(od, args.dir_path)

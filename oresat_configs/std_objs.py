@@ -1,4 +1,4 @@
-from .od_config import GenerateSubindex, IndexObject, SubindexObject
+from .configs.od_config import GenerateSubindex, IndexObject, SubindexObject
 
 STD_OBJS = [
     IndexObject(

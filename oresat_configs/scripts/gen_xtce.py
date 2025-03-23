@@ -1,47 +1,31 @@
-"""Generate XTCE for the beacon."""
-
+import os
 import xml.etree.ElementTree as ET
-from argparse import ArgumentParser, Namespace
+from argparse import Namespace
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import canopen
+from canopen import ObjectDictionary
 
-from .. import Mission, OreSatConfig
+from .._yaml_to_od import get_beacon_def, load_od_configs, load_od_db
+from ..configs.cards_config import CardsConfig
+from ..configs.mission_config import MissionConfig
 
 GEN_XTCE = "generate beacon xtce file"
 
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
-
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
-    """
-    parser.description = GEN_XTCE
-    parser.add_argument(
-        "--oresat",
-        default=Mission.default().arg,
-        choices=[m.arg for m in Mission],
-        type=lambda x: x.lower().removeprefix("oresat"),
-        help="Oresat Mission. (Default: %(default)s)",
-    )
-    parser.add_argument(
-        "-d", "--dir-path", default=".", help="Output directory path. (Default: %(default)s)"
-    )
-    return parser
-
-
 def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("xtce", help=GEN_XTCE))
+    """Registers an ArgumentParser as a subcommand of another parser."""
+    parser = subparsers.add_parser("xtce", help=GEN_XTCE)
+    parser.description = GEN_XTCE
+    parser.add_argument("mission_config", help="mission config path")
+    parser.add_argument("cards_config", help="cards config path")
+    parser.add_argument(
+        "-d",
+        "--dir-path",
+        default=".",
+        help="output directory path. (Default: %(default)s)",
+    )
     parser.set_defaults(func=gen_xtce)
 
 
@@ -113,9 +97,9 @@ def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
     return type_name
 
 
-def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
-    """Write beacon configs to a xtce file."""
-
+def write_xtce(
+    mission_config: MissionConfig, od: ObjectDictionary, dir_path: str = "."
+) -> None:
     root = ET.Element(
         "SpaceSystem",
         attrib={
@@ -135,7 +119,7 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
         attrib={
             "validationStatus": "Working",
             "classification": "NotClassified",
-            "version": f'{config.od_db["c3"]["beacon"]["revision"].value}.0',
+            "version": f"{config.od_db['c3']['beacon']['revision'].value}.0",
             "date": datetime.now().strftime("%Y-%m-%d"),
         },
     )
@@ -176,7 +160,9 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
     )
     ET.SubElement(uint128_type, "UnitSet")
     bin_data_enc = ET.SubElement(
-        uint128_type, "BinaryDataEncoding", attrib={"bitOrder": "leastSignificantBitFirst"}
+        uint128_type,
+        "BinaryDataEncoding",
+        attrib={"bitOrder": "leastSignificantBitFirst"},
     )
     bin_data_enc_size = ET.SubElement(
         bin_data_enc,
@@ -210,8 +196,10 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
     epoch = ET.SubElement(ref_time, "Epoch")
     epoch.text = "1970-01-01T00:00:00.000"
 
+    beacon_def = get_beacon_def(mission_config, od)
+
     para_types = ["unix_time", "b128_type", "uint32_type"]
-    for obj in config.beacon_def:
+    for obj in beacon_def:
         name = make_dt_name(obj)
         if name in para_types:
             continue
@@ -227,7 +215,10 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
                     "oneStringValue": "1",
                 },
             )
-        elif obj.data_type in canopen.objectdictionary.UNSIGNED_TYPES and obj.value_descriptions:
+        elif (
+            obj.data_type in canopen.objectdictionary.UNSIGNED_TYPES
+            and obj.value_descriptions
+        ):
             para_type = ET.SubElement(
                 tm_meta_para,
                 "EnumeratedParameterType",
@@ -325,7 +316,7 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
             "shortDescription": "AX.25 Header",
         },
     )
-    for obj in config.beacon_def:
+    for obj in beacon_def:
         ET.SubElement(
             para_set,
             "Parameter",
@@ -359,7 +350,7 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
         "ParameterRefEntry",
         attrib={"parameterRef": "ax25_header"},
     )
-    for obj in config.beacon_def:
+    for obj in beacon_def:
         ET.SubElement(
             entry_list,
             "ParameterRefEntry",
@@ -377,14 +368,14 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
 
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ", level=0)
-    file_name = f"{config.mission.filename()}.xtce"
+    file_name = f"{mission_config.name}.xtce"
     tree.write(f"{dir_path}/{file_name}", encoding="utf-8", xml_declaration=True)
 
 
-def gen_xtce(args: Optional[Namespace] = None) -> None:
-    """Gen_dcf main."""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
-
-    config = OreSatConfig(args.oresat)
-    write_xtce(config, args.dir_path)
+def gen_xtce(args: Namespace) -> None:
+    mission_config = MissionConfig.from_yaml(args.mission_config)
+    cards_config = CardsConfig.from_yaml(args.cards_config)
+    config_dir = os.path.dirname(args.cards_config)
+    od_configs = load_od_configs(cards_config, config_dir)
+    od_db = load_od_db(cards_config, od_configs)
+    write_xtce(mission_config, od_db[cards_config.master.name], args.dir_path)

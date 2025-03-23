@@ -1,13 +1,15 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Union
 
 from dacite import from_dict
 from yaml import CLoader, load
 
-from .constants import Mission
-
 
 @dataclass
-class Card:
+class CardInfo:
     name: str
     """Unique name for the card."""
     nice_name: str
@@ -24,8 +26,8 @@ class Card:
     """Base type of card; e.g. "battery", "solar", ..."""
     common: str = ""
     """Common base type of card; e.g. "software" or "firmware"."""
-    missions: list[str] = field(default_factory=lambda: [m.filename() for m in Mission])
-    """List of mission the card is in."""
+    missions: list[str] = field(default_factory=list)
+    """List of mission the card is in. Empty list for all."""
 
     @property
     def processor(self) -> str:
@@ -37,7 +39,22 @@ class Card:
         return processor
 
 
-def load_cards_config(path: str) -> list[Card]:
-    with open(path) as f:
-        config_raw = load(f, Loader=CLoader)
-    return [from_dict(data_class=Card, data=card_raw) for card_raw in config_raw]
+@dataclass
+class ConfigInfo:
+    name: str
+    od_source: str
+
+
+@dataclass
+class CardsConfig:
+    configs: list[ConfigInfo]
+    cards: list[CardInfo]
+    master: CardInfo
+
+    @classmethod
+    def from_yaml(cls, config_path: Union[str, Path]) -> CardsConfig:
+        if isinstance(config_path, str):
+            config_path = Path(config_path)
+        with config_path.open() as f:
+            config_raw = load(f, Loader=CLoader)
+        return from_dict(data_class=cls, data=config_raw)

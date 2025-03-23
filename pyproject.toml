@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oresat-configs"
-description = "OreSat mission configurations"
+description = "OreSat config library and scripts"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "GPL-3.0"}
@@ -15,70 +15,31 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
     "canopen",
     "dacite",
     "pyyaml",
     "tabulate",
+    "requests"
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+dev = [
+    "ruff",
+]
+
 [project.scripts]
 oresat-configs = "oresat_configs.__main__:oresat_configs"
-oresat-gen-fw-files = "oresat_configs.scripts.gen_fw_files:gen_fw_files"
-oresat-gen-dcf = "oresat_configs.scripts.gen_dcf:gen_dcf"
-oresat-print-od = "oresat_configs.scripts.print_od:print_od"
-oresat-sdo-transfer = "oresat_configs.scripts.sdo_transfer:sdo_transfer"
-oresat-gen-kaitai = "oresat_configs.scripts.gen_kaitai:gen_kaitai"
-oresat-gen-xtce = "oresat_configs.scripts.gen_xtce:gen_xtce"
 
 [tool.setuptools.packages.find]
 exclude = ["docs*", "tests*"]
 
-[tool.setuptools.package-data]
-"*" = ["*.yaml", "*.csv"]
-
 [tool.setuptools_scm]
 write_to = "oresat_configs/_version.py"
 
-[tool.black]
-line_length = 100
-
-[tool.pylama]
-format = "pylint"
-skip = "*/.tox/*,*/.env/,*/.git/*,*/.github/*,*/build/*,.direnv/*"
-linters = "pycodestyle,pyflakes,pylint,mccabe,mypy,radon"
-# E402:     Module level import not at top of file
-# C901:     Function is too complex
-# C0103:    Arguments are not snake_case naming style or too short
-# E203:     Whitespace before ':' (black does this)
-# R0912:    Too many branches
-# R0915:    Too many statements
-# R0901:    Function is too complex
-# R0914:    Too many local variables
-# R1716:    Simplify chained comparison between the operands
-# C0413:    Imports not at top of module
-# C0206:    Consider iterating dictionaries with .items()
-# R1716:    Simplify chained comparison between the operands
-# W1514:    Using open without explicitly specifying an encoding
-# R1702:    Too many nested blocks
-# E0401:    Cannot find implementation or library stub for module named
-# R0902:    Too many instance attributes
-# W0511:    TODOs or FIXMEs
-ignore = "E402,C901,C0103,E203,R0912,R0915,R901,R901,R0914,C0413,C0206,R1716,W1514,R1702,E0401,R0902,W0511"
-max_line_length = 100
-
-[[tool.pylama.files]]
-path = "*/__init__.py"
-# W0611:    Imported but unused
-# R0903:    Too few public methods
-ignore = "W0611,R0903"
-
-[[tool.mypy.overrides]]
-module = "canopen,canopen.objectdictionary,canopen.objectdictionary.datatypes"
-ignore_missing_imports = true
-
-[tool.isort]
-profile = "black"
-line_length = 100
+[tool.ruff]
+line-length = 100

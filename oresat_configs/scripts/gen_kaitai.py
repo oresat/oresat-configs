@@ -1,47 +1,30 @@
-"""Generate KaiTai for the beacon."""
-
-from argparse import ArgumentParser, Namespace
-from typing import Any, Optional
+import os
+from argparse import Namespace
+from typing import Any
 
 import canopen
-from canopen.objectdictionary import Array, Record
+from canopen.objectdictionary import Array, ObjectDictionary, Record
 from yaml import dump
 
-from .. import Mission, OreSatConfig
+from .._yaml_to_od import get_beacon_def, load_od_configs, load_od_db
+from ..configs.cards_config import CardsConfig
+from ..configs.mission_config import MissionConfig
 
 GEN_KAITAI = "generate beacon kaitai configuration"
 
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
-
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
-    """
-    parser.description = GEN_KAITAI
-    parser.add_argument(
-        "--oresat",
-        default=Mission.default().arg,
-        choices=[m.arg for m in Mission],
-        type=lambda x: x.lower().removeprefix("oresat"),
-        help="Oresat Mission. (Default: %(default)s)",
-    )
-    parser.add_argument(
-        "-d", "--dir-path", default=".", help="Output directory path. (Default: %(default)s)"
-    )
-    return parser
-
-
 def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("kaitai", help=GEN_KAITAI))
+    """Registers an ArgumentParser as a subcommand of another parser."""
+    parser = subparsers.add_parser("kaitai", help=GEN_KAITAI)
+    parser.description = GEN_KAITAI
+    parser.add_argument("mission_config", help="mission config path")
+    parser.add_argument("cards_config", help="cards config path")
+    parser.add_argument(
+        "-d",
+        "--dir-path",
+        default=".",
+        help="output directory path. (Default: %(default)s)",
+    )
     parser.set_defaults(func=gen_kaitai)
 
 
@@ -61,17 +44,14 @@ CANOPEN_TO_KAITAI_DT = {
 }
 
 
-def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
-    """Write beacon configs to a kaitai file."""
-
-    # Grab and format mission name
-    filename = config.mission.filename()
-
+def write_kaitai(
+    mission_config: MissionConfig, od: ObjectDictionary, dir_path: str = "."
+) -> None:
     #  Setup pre-determined canned types
     kaitai_data: Any = {
         "meta": {
-            "id": filename,
-            "title": f"{filename} Decoder Struct",
+            "id": mission_config.name,
+            "title": f"{mission_config.nice_name} Decoder Struct",
             "endian": "le",
         },
         "seq": [
@@ -209,7 +189,9 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
     # Append field types for each field
     payload_size = 0
 
-    for obj in config.beacon_def:
+    beacon_def = get_beacon_def(mission_config, od)
+
+    for obj in beacon_def:
         name = (
             "_".join([obj.parent.name, obj.name])
             if isinstance(obj.parent, (Record, Array))
@@ -236,14 +218,14 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
     kaitai_data["types"]["ui_frame"]["seq"][1]["size"] = payload_size
 
     # Write kaitai to output file
-    with open(f"{dir_path}/{filename}.ksy", "w+") as file:
+    with open(f"{dir_path}/{mission_config.name}.ksy", "w+") as file:
         dump(kaitai_data, file)
 
 
-def gen_kaitai(args: Optional[Namespace] = None) -> None:
-    """Gen_kaitai main."""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
-
-    config = OreSatConfig(args.oresat)
-    write_kaitai(config, args.dir_path)
+def gen_kaitai(args: Namespace) -> None:
+    mission_config = MissionConfig.from_yaml(args.mission_config)
+    cards_config = CardsConfig.from_yaml(args.cards_config)
+    config_dir = os.path.dirname(args.cards_config)
+    od_configs = load_od_configs(cards_config, config_dir)
+    od_db = load_od_db(cards_config, od_configs)
+    write_kaitai(mission_config, od_db[cards_config.master.name], args.dir_path)

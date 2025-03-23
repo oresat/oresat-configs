@@ -1,0 +1,412 @@
+import os
+from argparse import Namespace
+from pathlib import Path
+from typing import Any, Optional
+
+from canopen.objectdictionary import ObjectDictionary, Variable
+
+from .. import OdConfig, DataType, get_fram_def, get_beacon_def, MissionConfig, OdConfig, load_od_db, load_od_configs, CardsConfig
+
+CONFIG_PATH = os.path.dirname(os.path.abspath(__file__)) + "/../base"
+GEN_CANOPEND = "generate od file for oresat linux apps"
+
+
+def register_subparser(subparsers: Any):
+    parser = subparsers.add_parser("canopend", help=GEN_CANOPEND)
+    parser.description = GEN_CANOPEND
+    parser.add_argument("card", choices=["c3", "gps", "star_tracker", "cfc", "dxwifi"])
+    parser.add_argument("-d", "--dir-path", default=".", help="directory path. default %(default)s")
+    parser.add_argument(
+        "-l",
+        "--languague",
+        choices=["python"],
+        default="python",
+        help="languague, default %(default)s",
+    )
+    parser.set_defaults(func=gen_canopend)
+
+
+def snake_to_camel(name):
+    return "".join(word.title() for word in name.split("_"))
+
+
+def remove_card_names(name, cards, base_enums) -> str:
+    for i in cards:
+        if name.endswith(i):
+            name = name[: -len(i)]
+        if name.startswith(i):
+            name = name.replace(i, cards[i])
+    for i in base_enums:
+        if i in name:
+            name = i
+    return name
+
+
+def make_enum_lines(name, enums) -> list[str]:
+    lines = ["\n\n"]
+    class_name = snake_to_camel(name)
+    lines.append(f"class {class_name}(Enum):\n")
+    for value, name in enums.items():
+        lines.append(f"    {name.upper()} = {value}\n")
+    return lines
+
+
+def make_bitfield_lines(name, bitfields) -> list[str]:
+    lines = ["\n\n"]
+    class_name = snake_to_camel(name) + "BitField"
+    lines.append(f"class {class_name}(EntryBitField):\n")
+    for name, value in bitfields.items():
+        if isinstance(value, int):
+            value = [
+                value,
+            ]
+        bits = len(value)
+        offset = min(value)
+        lines.append(f"    {name.upper()} = {bits}, {offset}\n")
+    return lines
+
+
+def write_canopend_python(name: str, od: ObjectDictionary, dir_path: str = "."):
+    enums = {}
+    bitfields = {}
+    entries = {}
+    tpdos = []
+
+    for index in sorted(od.indices):
+        obj = od[index]
+
+        if 0x1800 <= index < 0x1A00:
+            tpdos.append(index - 0x1800 + 1)
+
+        if index < 0x2000:
+            continue
+
+        if isinstance(obj, Variable):
+            obj_name = obj.name
+            entries[obj_name] = obj
+
+            if obj.value_descriptions:
+                enums[obj_name] = obj.value_descriptions
+            if obj.bit_definitions:
+                bitfields[obj_name] = obj.bit_definitions
+        else:
+            for sub_obj in obj.subindices.values():
+                if sub_obj.subindex == 0:
+                    continue
+
+                obj_name = f"{obj.name}_{sub_obj.name}"
+                entries[obj_name] = sub_obj
+
+                if sub_obj.value_descriptions:
+                    enums[obj_name] = sub_obj.value_descriptions
+                if sub_obj.bit_definitions:
+                    bitfields[obj_name] = sub_obj.bit_definitions
+
+    lines = [
+        "from enum import Enum\n\n",
+    ]
+
+    line = "from oresat_libcanopend import DataType, Entry"
+    if bitfields:
+        line += ", EntryBitField"
+    line += "\n"
+    lines.append(line)
+
+    for name, values in enums.items():
+        lines += make_enum_lines(name, values)
+
+    for name, values in bitfields.items():
+        lines += make_bitfield_lines(name, values)
+
+    lines.append("\n")
+    lines.append("\n")
+    node_name = snake_to_camel(name)
+    lines.append(f"class {node_name}Entry(Entry):\n")
+    for entry_name, obj in entries.items():
+        dt = DataType[obj.data_type]
+        class_name = snake_to_camel(entry_name)
+
+        e_enum = None
+        if obj.value_descriptions:
+            e_enum = class_name
+
+        bitfield = None
+        if obj.bit_definitions:
+            bitfield = f"{class_name}BitField"
+
+        line = f"    {name.upper()} = 0x{obj.index:X}, 0x{obj.subindex:X}, DataType.{dt.name}"
+        default = obj.value
+        if isinstance(default, str):
+            default = f'"{default}"'
+        line += f", {default}"
+
+        if obj.min or obj.max or e_enum or bitfield:
+            line += f", {obj.min}, {obj.max}, {e_enum}, {bitfield}"
+
+        lines.append(line + "\n")
+
+    lines.append("\n")
+    lines.append("\n")
+    lines.append(f"class {node_name}Tpdo(Enum):\n")
+    for i in range(len(tpdos)):
+        lines.append(f"    TPDO_{tpdos[i]} = {i}\n")
+
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
+
+    output_file = os.path.join(dir_path, "od.py")
+    with open(output_file, "w") as f:
+        f.writelines(lines)
+
+
+def write_canopend_mission_defs(mission_configs: list[MissionConfig], od: ObjectDictionary, dir_path: str):
+    beacon_lines = ["from .od import C3Entry, Mission\n"]
+    for mission_config in mission_configs:
+        beacon_lines.append(f"\n\n{mission_config.name.upper()}_BEACON = [\n")
+        for obj in get_beacon_def(mission_config):
+            name = obj.name
+            if not isinstance(obj.parent, ObjectDictionary):
+                name = f"{obj.parent.name}_{name}"
+            beacon_lines.append(f"    C3Entry.{name.upper()},\n")
+        beacon_lines.append("]")
+
+    beacon_lines.append("\n\nBEACON_DEFS = {\n")
+    for mission_config in mission_configs:
+        mission_name = mission_config.name.upper
+        beacon_lines.append(f"    Mission.{mission_name}: {mission_name}_BEACON,\n")
+    beacon_lines.append("}")
+
+    output_file = os.path.join(dir_path, "beacon.py")
+    with open(output_file, "w") as f:
+        f.writelines(beacon_lines)
+
+
+def write_fram_def(dir_path: str):
+
+    fram_lines = ["from .od import C3Entry\n"]
+    fram_lines.append("\n\nFRAM_DEF = [\n")
+    for obj in config.fram_def:
+        name = obj.name
+        if not isinstance(obj.parent, ObjectDictionary):
+            name = f"{obj.parent.name}_{name}"
+        fram_lines.append(f"    C3Entry.{name.upper()},\n")
+    fram_lines.append("]")
+
+    output_file = os.path.join(dir_path, "fram.py")
+    with open(output_file, "w") as f:
+        f.writelines(fram_lines)
+
+
+def write_nodes(dir_path: str):
+    lines = [
+        "from dataclasses import dataclass\n",
+        "from enum import Enum, auto\n",
+        "\n",
+        "from .od import Mission\n",
+        "\n\n",
+        "class NodeProcessor(Enum):\n",
+        "    NONE = 0\n",
+        "    STM32 = auto()\n",
+        "    OCTAVO = auto()\n",
+        "\n\n",
+    ]
+
+    lines.append(
+        "class NodeBase(Enum):\n",
+    )
+    lines.append(
+        "    NONE = 0\n",
+    )
+    for file_name in sorted(os.listdir(CONFIG_PATH)):
+        file_path = os.path.join(CONFIG_PATH, file_name)
+        if (
+            "common" in file_name
+            or file_name in ["c3.yaml", "__init__.py"]
+            or os.path.isdir(file_path)
+        ):
+            continue
+        card_name = file_name.split(".")[0]
+        lines.append(
+            f"    {card_name.upper()} = auto()\n",
+        )
+
+    lines += [
+        "\n\n",
+        "@dataclass\n",
+        "class Node:\n",
+        "    node_id: int\n",
+        "    processor: NodeProcessor\n",
+        "    opd_address: int\n",
+        "    opd_always_on: bool\n",
+        "    base: NodeBase\n",
+        '    child: str = ""\n',
+    ]
+
+    for mission in list(Mission):
+        config = OreSatConfig(mission)
+        mission_name = snake_to_camel(mission.filename()).replace("Oresat", "OreSat")
+
+        lines.append(f"\n\nclass {mission_name}Node(Node, Enum):\n")
+        for name, info in config.cards.items():
+            if name == "c3":
+                continue
+            line = (
+                f"    {name.upper()} = 0x{info.node_id:X}, "
+                f"NodeProcessor.{info.processor.upper()}, "
+                f"0x{info.opd_address:X}, {info.opd_always_on}"
+                f", NodeBase."
+            )
+            line += f"{info.base.upper()}" if info.node_id else "NONE"
+            if info.child:
+                line += f', "{info.child.upper()}"'
+            lines.append(line + "\n")
+
+    lines.append("\n\nMISSION_NODES = {\n")
+    for mission in list(Mission):
+        mission_name = mission.filename().upper()
+        mission_name_camel = snake_to_camel(mission.filename()).replace("Oresat", "OreSat")
+        lines.append(f"    Mission.{mission_name}: list({mission_name_camel}Node),\n")
+    lines.append("}")
+
+    output_file = os.path.join(dir_path, "nodes.py")
+    with open(output_file, "w") as f:
+        f.writelines(lines)
+
+
+def write_canopend_od_all(cards_config: CardsConfig, dir_path: str):
+    for od_config in cards_config:
+        od = od_gen([od_config])
+        write_canopen_od(od)
+
+
+def gen_canopend(args: Optional[Namespace] = None):
+
+    if not args.cards_config:
+        od_config = OdConfig.from_yaml(args.config)
+        write_canopen_od(od_config)
+    else:
+        cards_config = CardsConfig.from_yaml(args.cards_config)
+        write_canopend_od_all(cards_config, args.dir_path)
+
+    if args.mission_configs:
+        mission_configs = [MissionConfig.from_yaml(m) for m in args.mission_configs]
+        write_canopend_mission_defs(mission_configs, args.dir_path)
+
+    output_file = os.path.join(args.dir_path, "__init__.py")
+    if not os.path.isfile(output_file):
+        open(output_file, "w").close()
+
+
+def make_line(
+    card: str,
+    name: str,
+    index: int,
+    subindex: int,
+    data_type: str,
+    default: Any,
+    low_limit: Optional[int],
+    high_limit: Optional[int],
+    value_descriptions: bool,
+    bit_definitions: bool,
+) -> str:
+    if data_type.lower() == "octet_str":
+        data_type = "bytes"
+
+    class_name = snake_to_camel(card + "_" + name)
+    if "common" in card:
+        class_name = snake_to_camel(name)
+
+    e_enum = None
+    if value_descriptions:
+        e_enum = class_name
+
+    bitfield = None
+    if bit_definitions:
+        bitfield = f"{class_name}BitField"
+
+    line = f"    {name.upper()} = 0x{index:X}, 0x{subindex:X}, DataType.{data_type.upper()}"
+    if isinstance(default, str):
+        default = f'"{default}"'
+    line += f", {default}"
+
+    if low_limit or high_limit or e_enum or bitfield:
+        line += f", {low_limit}, {high_limit}, {e_enum}, {bitfield}"
+
+    return line + "\n"
+
+
+def write_other_nodes(dir_path: str):
+    for file_name in os.listdir(CONFIG_PATH):
+        file_path = os.path.join(CONFIG_PATH, file_name)
+        if file_name in ["c3.yaml", "__init__.py"] or os.path.isdir(file_path):
+            continue
+
+        card_name = file_name.split(".")[0]
+
+        lines = [
+            "from enum import Enum\n\n",
+            "from oresat_libcanopend import DataType, Entry, EntryBitField\n",
+        ]
+
+        entry_lines = [f"class {snake_to_camel(card_name)}Entry(Entry):\n"]
+
+        od_config = OdConfig.from_yaml(Path(file_path))
+        for obj in od_config.objects:
+            if obj.subindexes:
+                for sub_obj in obj.subindexes:
+                    name = f"{obj.name}_{sub_obj.name}"
+                    entry_lines.append(
+                        make_line(
+                            card_name,
+                            name,
+                            obj.index,
+                            sub_obj.subindex,
+                            sub_obj.data_type,
+                            sub_obj.default,
+                            sub_obj.low_limit,
+                            sub_obj.high_limit,
+                            sub_obj.value_descriptions,
+                            sub_obj.bit_definitions,
+                        )
+                    )
+                    if "common" not in card_name:
+                        name = card_name + "_" + name
+                    if sub_obj.value_descriptions:
+                        lines += make_enum_lines(
+                            name, {v: k for k, v in sub_obj.value_descriptions.items()}
+                        )
+                    if sub_obj.bit_definitions:
+                        lines += make_bitfield_lines(name, sub_obj.bit_definitions)
+            else:
+                name = obj.name
+                entry_lines.append(
+                    make_line(
+                        card_name,
+                        name,
+                        obj.index,
+                        0,
+                        obj.data_type,
+                        obj.default,
+                        obj.low_limit,
+                        obj.high_limit,
+                        obj.value_descriptions,
+                        obj.bit_definitions,
+                    )
+                )
+                if "common" not in card_name:
+                    name = card_name + "_" + name
+                if obj.value_descriptions:
+                    lines += make_enum_lines(
+                        name, {v: k for k, v in obj.value_descriptions.items()}
+                    )
+                if obj.bit_definitions:
+                    lines += make_bitfield_lines(name, obj.bit_definitions)
+
+        lines += [
+            "\n\n",
+        ]
+        lines += entry_lines
+
+        output_file = os.path.join(dir_path, f"{card_name}_od.py")
+        with open(output_file, "w") as f:
+            f.writelines(lines)

@@ -1,51 +1,34 @@
-"""Generate a DCF for from an OreSat card's object directory."""
-
-from argparse import ArgumentParser, Namespace
+import os
+from argparse import Namespace
 from datetime import datetime
 from typing import Any, Optional
 
 import canopen
 from canopen.objectdictionary import Variable
 
-from .. import Mission, OreSatConfig
+from .._yaml_to_od import load_od_configs, load_od_db
+from ..configs.cards_config import CardsConfig
 
 GEN_DCF = "generate DCF file for OreSat node(s)"
 
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
-
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
-    """
-    parser.description = GEN_DCF
-    parser.add_argument(
-        "--oresat",
-        default=Mission.default().arg,
-        choices=[m.arg for m in Mission],
-        type=lambda x: x.lower().removeprefix("oresat"),
-        help="Oresat Mission. (Default: %(default)s)",
-    )
-    parser.add_argument("card", help="card name; all, c3, gps, star_tracker_1, etc")
-    parser.add_argument("-d", "--dir-path", default=".", help='directory path; defautl "."')
-    return parser
-
-
 def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("dcf", help=GEN_DCF))
+    """Registers an ArgumentParser as a subcommand of another parser."""
+    parser = subparsers.add_parser("dcf", help=GEN_DCF)
+    parser.description = GEN_DCF
+    parser.add_argument("config", help="cards config path")
+    parser.add_argument("card", help="name of card")
+    parser.add_argument(
+        "-d",
+        "--dir-path",
+        default=".",
+        help='output directory path; default "%(default)s"',
+    )
     parser.set_defaults(func=gen_dcf)
 
 
-def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
-    """Save an od/dcf file
+def write_dcf(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
+    """Save an eds/dcf file
 
     Parameters
     ----------
@@ -138,7 +121,9 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     lines.append("[OptionalObjects]")
     optional_objs = []
     for i in od:
-        if (i >= 0x1002 and i <= 0x1FFF and i != 0x1018) or (i >= 0x6000 and i <= 0xFFFF):
+        if (i >= 0x1002 and i <= 0x1FFF and i != 0x1018) or (
+            i >= 0x6000 and i <= 0xFFFF
+        ):
             optional_objs.append(i)
     lines.append(f"SupportedObjects={len(optional_objs)}")
     for i in optional_objs:
@@ -183,7 +168,9 @@ def _objects_lines(od: canopen.ObjectDictionary, indexes: list[int]) -> list[str
     return lines
 
 
-def _variable_lines(variable: Variable, index: int, subindex: Optional[int] = None) -> list[str]:
+def _variable_lines(
+    variable: Variable, index: int, subindex: Optional[int] = None
+) -> list[str]:
     lines = []
 
     if subindex is None:
@@ -242,16 +229,10 @@ def _record_lines(record: canopen.objectdictionary.Record, index: int) -> list[s
     return lines
 
 
-def gen_dcf(args: Optional[Namespace] = None) -> None:
-    """Gen_dcf main."""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
-
-    config = OreSatConfig(args.oresat)
-
-    if args.card.lower() == "all":
-        for od in config.od_db.values():
-            write_od(od, args.dir_path)
-    else:
-        od = config.od_db[args.card.lower()]
-        write_od(od, args.dir_path)
+def gen_dcf(args: Namespace) -> None:
+    cards_config = CardsConfig.from_yaml(args.config)
+    config_dir = os.path.dirname(args.config)
+    od_configs = load_od_configs(cards_config, config_dir)
+    od_db = load_od_db(cards_config, od_configs)
+    od = od_db[args.card]
+    write_dcf(od, args.dir_path)

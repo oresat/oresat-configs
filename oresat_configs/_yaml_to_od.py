@@ -1,13 +1,18 @@
+import json
+import os
 from copy import deepcopy
 from enum import Enum
 from typing import Any, Union
 
 import canopen
+import requests
 from canopen import ObjectDictionary
 from canopen.objectdictionary import Array, Record, Variable
 
-from .beacon_config import BeaconConfig
-from .od_config import ConfigObject, GenerateSubindex, IndexObject, OdConfig, SubindexObject
+from .configs.cards_config import CardsConfig
+from .configs.mission_config import MissionConfig
+from .configs.od_config import (ConfigObject, GenerateSubindex, IndexObject,
+                                OdConfig, SubindexObject)
 from .std_objs import STD_OBJS
 
 RPDO_COMM_START = 0x1400
@@ -67,7 +72,7 @@ class DataType(Enum):
 
 def _set_var_default(obj: ConfigObject, var: Variable) -> None:
     default = obj.default
-    if obj.data_type in "str" and obj.str_length > 1:
+    if obj.data_type == "str" and obj.str_length > 1:
         default = " " * obj.str_length
     elif obj.data_type == "octet_str" and obj.str_length > 1:
         default = b"\x00" * obj.str_length
@@ -79,7 +84,7 @@ def _set_var_default(obj: ConfigObject, var: Variable) -> None:
 
 
 def _parse_bit_definitions(
-    obj: Union[IndexObject, SubindexObject, GenerateSubindex]
+    obj: Union[IndexObject, SubindexObject, GenerateSubindex],
 ) -> dict[str, list[int]]:
     bit_defs = {}
     for name, bits in obj.bit_definitions.items():
@@ -190,15 +195,18 @@ def add_objects(od: ObjectDictionary, objects: list[IndexObject]) -> None:
         if obj.index in od.indices:
             raise ValueError(f"index 0x{obj.index:X} already in OD")
 
-        if obj.object_type == "variable":
-            var = _make_var(obj, obj.index)
-            od.add_object(var)
-        elif obj.object_type == "record":
-            rec = _make_rec(obj)
-            od.add_object(rec)
-        elif obj.object_type == "array":
-            arr = _make_arr(obj)
-            od.add_object(arr)
+        try:
+            if obj.object_type == "variable":
+                var = _make_var(obj, obj.index)
+                od.add_object(var)
+            elif obj.object_type == "record":
+                rec = _make_rec(obj)
+                od.add_object(rec)
+            elif obj.object_type == "array":
+                arr = _make_arr(obj)
+                od.add_object(arr)
+        except Exception as e:
+            raise ValueError(f"{od.device_information.product_name} {e}") from e
 
 
 def _make_pdo_comms_rec(
@@ -455,7 +463,7 @@ def add_std_objects(od: ObjectDictionary, od_config: OdConfig):
             od.add_object(_make_arr(obj))
 
 
-def gen_od(configs: list[OdConfig]) -> ObjectDictionary:
+def gen_od(configs: Union[OdConfig, list[OdConfig]]) -> ObjectDictionary:
     od = ObjectDictionary()
     od.bitrate = 1_000_000  # bps
     od.node_id = 0
@@ -475,6 +483,9 @@ def gen_od(configs: list[OdConfig]) -> ObjectDictionary:
     od.device_information.nr_of_TXPDO = 0
     od.device_information.LSS_supported = False
 
+    if isinstance(configs, OdConfig):
+        configs = [configs]
+
     for config in configs:
         add_std_objects(od, config)
         add_objects(od, config.objects)
@@ -492,8 +503,8 @@ def gen_od(configs: list[OdConfig]) -> ObjectDictionary:
     return od
 
 
-def gen_master_od(configs: list[OdConfig], od_db: dict[str, ObjectDictionary]) -> ObjectDictionary:
-    od = gen_od(configs)
+def gen_master_od(config: OdConfig, od_db: dict[str, ObjectDictionary]) -> ObjectDictionary:
+    od = gen_od([config])
     for node_name, node_od in od_db.items():
         for tpdo_num in range(16):
             index = TPDO_COMM_START + tpdo_num - 1
@@ -517,8 +528,9 @@ def gen_master_od(configs: list[OdConfig], od_db: dict[str, ObjectDictionary]) -
 
 def set_od_node_id(od: ObjectDictionary, node_id: int):
     od.node_id = node_id
-    od["cob_id_emergency_message"].default = 0x80 + node_id
-    od["cob_id_emergency_message"].value = 0x80 + node_id
+    if 0x1014 in od:
+        od[0x1014].default = 0x80 + node_id
+        od[0x1014].value = 0x80 + node_id
     for i in range(16):
         # RPDO
         cob_id = (((i - 1) % 4) * 0x100) + ((i - 1) // 4) + 0x200
@@ -534,20 +546,77 @@ def set_od_node_id(od: ObjectDictionary, node_id: int):
             od[index][2].value += node_id
 
 
+def load_od_configs(cards_config: CardsConfig, config_dir: str, force_download: bool = False) -> dict[str, OdConfig]:
+    cache_dir = os.path.expanduser("~/.cache/oresat-configs")
+    data_json_path = os.path.join(cache_dir, "data.json")
+
+    if not os.path.isdir(cache_dir):
+        os.makedirs(cache_dir)
+
+    data = {}
+    if not force_download and os.path.isfile(data_json_path):
+        try:
+            with open(data_json_path, "r") as f:
+                data = json.load(f)
+        except json.decoder.JSONDecodeError:
+            pass
+
+    od_configs = {}
+    for config_info in cards_config.configs:
+        if config_info.od_source.startswith("http"):
+            config_path = os.path.join(cache_dir, f"{config_info.name}.yaml")
+            if config_info.od_source != data.get(config_info.name, "") or not os.path.isfile(config_path):
+                print(f"downloading {config_info.od_source}")
+                r = requests.get(config_info.od_source, timeout=1)
+                with open(config_path, "w") as f:
+                    f.write(r.text)
+        else:
+            config_path = os.path.join(config_dir, config_info.od_source)
+
+        data[config_info.name] = config_info.od_source
+        od_configs[config_info.name] = OdConfig.from_yaml(config_path)
+
+    with open(data_json_path, "w") as f:
+        json.dump(data, f, indent=4)
+
+    return od_configs
+
+
+def load_od_db(
+    cards_config: CardsConfig, od_configs: dict[str, OdConfig]
+) -> dict[str, ObjectDictionary]:
+    od_db = {}
+
+    for card_info in cards_config.cards:
+        tmp = []
+        if card_info.base:
+            tmp.append(od_configs[card_info.base])
+        if card_info.common:
+            tmp.append(od_configs[card_info.common])
+        od = gen_od(tmp)
+        set_od_node_id(od, card_info.node_id)
+        od_db[card_info.name] = od
+
+    master_info = cards_config.master
+    c3_od = gen_master_od(od_configs[master_info.base], od_db)
+    set_od_node_id(c3_od, master_info.node_id)
+    od_db[master_info.name] = c3_od
+
+    return od_db
+
+
 def get_objs(od: ObjectDictionary, fields: list[list[str]]) -> list[Variable]:
     objs = []
-    for field in fields:
-        if len(field) == 1:
-            obj = od[field[0]]
-        elif len(field) == 2:
-            obj = od[field[0]][field[1]]
-        objs.append(obj)
+    for names in fields:
+        if len(names) == 1:
+            objs.append(od[names[0]])
+        elif len(names) == 2:
+            objs.append(od[names[0]][names[1]])
     return objs
 
 
-def get_fram_defs(c3_od: ObjectDictionary, c3_config: OdConfig) -> list[Variable]:
-    return get_objs(c3_od, c3_config.fram)
+def get_beacon_def(od: ObjectDictionary, mission_config: MissionConfig) -> list[Variable]:
+    return get_objs(od, mission_config.beacon.fields)
 
-
-def get_beacon_defs(c3_od: ObjectDictionary, beacon_config: BeaconConfig) -> list[Variable]:
-    return get_objs(c3_od, beacon_config.fields)
+def get_fram_def(od: ObjectDictionary, od_config: OdConfig) -> list[Variable]:
+    return get_objs(od, od_config.fram)
