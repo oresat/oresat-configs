@@ -1,8 +1,7 @@
 import os
 import xml.etree.ElementTree as ET
-from argparse import Namespace
 from datetime import datetime
-from typing import Any
+from typing import Union
 
 import canopen
 from canopen import ObjectDictionary
@@ -10,24 +9,6 @@ from canopen import ObjectDictionary
 from .._yaml_to_od import get_beacon_def, load_od_configs, load_od_db
 from ..configs.cards_config import CardsConfig
 from ..configs.mission_config import MissionConfig
-
-GEN_XTCE = "generate beacon xtce file"
-
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser."""
-    parser = subparsers.add_parser("xtce", help=GEN_XTCE)
-    parser.description = GEN_XTCE
-    parser.add_argument("mission_config", help="mission config path")
-    parser.add_argument("cards_config", help="cards config path")
-    parser.add_argument(
-        "-d",
-        "--dir-path",
-        default=".",
-        help="output directory path. (Default: %(default)s)",
-    )
-    parser.set_defaults(func=gen_xtce)
-
 
 CANOPEN_TO_XTCE_DT = {
     canopen.objectdictionary.BOOLEAN: "bool",
@@ -97,13 +78,11 @@ def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
     return type_name
 
 
-def write_xtce(
-    mission_config: MissionConfig, od: ObjectDictionary, dir_path: str = "."
-) -> None:
+def write_xtce(mission_config: MissionConfig, od: ObjectDictionary):
     root = ET.Element(
         "SpaceSystem",
         attrib={
-            "name": config.mission.filename(),
+            "name": mission_config.nice_name,
             "xmlns": "http://www.omg.org/spec/XTCE/20180204",
             "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
             "xsi:schemaLocation": (
@@ -119,7 +98,7 @@ def write_xtce(
         attrib={
             "validationStatus": "Working",
             "classification": "NotClassified",
-            "version": f"{config.od_db['c3']['beacon']['revision'].value}.0",
+            "version": "0.0",
             "date": datetime.now().strftime("%Y-%m-%d"),
         },
     )
@@ -196,7 +175,7 @@ def write_xtce(
     epoch = ET.SubElement(ref_time, "Epoch")
     epoch.text = "1970-01-01T00:00:00.000"
 
-    beacon_def = get_beacon_def(mission_config, od)
+    beacon_def = get_beacon_def(od, mission_config)
 
     para_types = ["unix_time", "b128_type", "uint32_type"]
     for obj in beacon_def:
@@ -215,10 +194,7 @@ def write_xtce(
                     "oneStringValue": "1",
                 },
             )
-        elif (
-            obj.data_type in canopen.objectdictionary.UNSIGNED_TYPES
-            and obj.value_descriptions
-        ):
+        elif obj.data_type in canopen.objectdictionary.UNSIGNED_TYPES and obj.value_descriptions:
             para_type = ET.SubElement(
                 tm_meta_para,
                 "EnumeratedParameterType",
@@ -369,13 +345,16 @@ def write_xtce(
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ", level=0)
     file_name = f"{mission_config.name}.xtce"
-    tree.write(f"{dir_path}/{file_name}", encoding="utf-8", xml_declaration=True)
+    tree.write(file_name, encoding="utf-8", xml_declaration=True)
 
 
-def gen_xtce(args: Namespace) -> None:
-    mission_config = MissionConfig.from_yaml(args.mission_config)
-    cards_config = CardsConfig.from_yaml(args.cards_config)
-    config_dir = os.path.dirname(args.cards_config)
+def gen_xtce(cards_config_path: str, mission_config_paths: Union[str, list[str]]):
+    cards_config = CardsConfig.from_yaml(cards_config_path)
+    if isinstance(mission_config_paths, str):
+        mission_config_paths = [mission_config_paths]
+    mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
+    config_dir = os.path.dirname(cards_config_path)
     od_configs = load_od_configs(cards_config, config_dir)
     od_db = load_od_db(cards_config, od_configs)
-    write_xtce(mission_config, od_db[cards_config.master.name], args.dir_path)
+    for mission_config in mission_configs:
+        write_xtce(mission_config, od_db[cards_config.manager.name])

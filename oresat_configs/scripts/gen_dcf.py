@@ -116,14 +116,12 @@ def write_dcf(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
         lines.append(f"{num}={value}")
     lines.append("")
 
-    lines += _objects_lines(od, mandatory_objs)
+    lines += make_dcf_objects_lines(od, mandatory_objs)
 
     lines.append("[OptionalObjects]")
     optional_objs = []
     for i in od:
-        if (i >= 0x1002 and i <= 0x1FFF and i != 0x1018) or (
-            i >= 0x6000 and i <= 0xFFFF
-        ):
+        if (i >= 0x1002 and i <= 0x1FFF and i != 0x1018) or (i >= 0x6000 and i <= 0xFFFF):
             optional_objs.append(i)
     lines.append(f"SupportedObjects={len(optional_objs)}")
     for i in optional_objs:
@@ -132,7 +130,7 @@ def write_dcf(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
         lines.append(f"{num}={value}")
     lines.append("")
 
-    lines += _objects_lines(od, optional_objs)
+    lines += make_dcf_objects_lines(od, optional_objs)
 
     lines.append("[ManufacturerObjects]")
     manufacturer_objs = []
@@ -146,29 +144,29 @@ def write_dcf(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
         lines.append(f"{num}={value}")
     lines.append("")
 
-    lines += _objects_lines(od, manufacturer_objs)
+    lines += make_dcf_objects_lines(od, manufacturer_objs)
 
     with open(file_path, "w") as f:
         for line in lines:
             f.write(line + "\n")
 
 
-def _objects_lines(od: canopen.ObjectDictionary, indexes: list[int]) -> list[str]:
+def make_dcf_objects_lines(od: canopen.ObjectDictionary, indexes: list[int]) -> list[str]:
     lines = []
 
     for i in indexes:
         obj = od[i]
         if isinstance(obj, canopen.objectdictionary.Variable):
-            lines += _variable_lines(obj, i)
+            lines += make_dcf_variable_lines(obj, i)
         elif isinstance(obj, canopen.objectdictionary.Array):
-            lines += _array_lines(obj, i)
+            lines += make_dcf_array_lines(obj, i)
         elif isinstance(obj, canopen.objectdictionary.Record):
-            lines += _record_lines(obj, i)
+            lines += make_dcf_record_lines(obj, i)
 
     return lines
 
 
-def _variable_lines(
+def make_dcf_variable_lines(
     variable: Variable, index: int, subindex: Optional[int] = None
 ) -> list[str]:
     lines = []
@@ -184,7 +182,7 @@ def _variable_lines(
     lines.append(f"AccessType={variable.access_type}")
     if variable.default:  # optional
         if variable.data_type == canopen.objectdictionary.OCTET_STRING:
-            tmp = variable.default.hex(sep=" ")
+            tmp = variable.default.hex()
             lines.append(f"DefaultValue={tmp}")
         elif variable.data_type == canopen.objectdictionary.BOOLEAN:
             lines.append(f"DefaultValue={int(variable.default)}")
@@ -197,7 +195,7 @@ def _variable_lines(
     return lines
 
 
-def _array_lines(array: canopen.objectdictionary.Array, index: int) -> list[str]:
+def make_dcf_array_lines(array: canopen.objectdictionary.Array, index: int) -> list[str]:
     lines = []
 
     lines.append(f"[{index:X}]")
@@ -208,12 +206,12 @@ def _array_lines(array: canopen.objectdictionary.Array, index: int) -> list[str]
     lines.append("")
 
     for i in array.subindices:
-        lines += _variable_lines(array[i], index, i)
+        lines += make_dcf_variable_lines(array[i], index, i)
 
     return lines
 
 
-def _record_lines(record: canopen.objectdictionary.Record, index: int) -> list[str]:
+def make_dcf_record_lines(record: canopen.objectdictionary.Record, index: int) -> list[str]:
     lines = []
 
     lines.append(f"[{index:X}]")
@@ -224,7 +222,7 @@ def _record_lines(record: canopen.objectdictionary.Record, index: int) -> list[s
     lines.append("")
 
     for i in record.subindices:
-        lines += _variable_lines(record[i], index, i)
+        lines += make_dcf_variable_lines(record[i], index, i)
 
     return lines
 

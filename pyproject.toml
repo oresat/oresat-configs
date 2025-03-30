@@ -33,7 +33,7 @@ dev = [
 ]
 
 [project.scripts]
-oresat-configs = "oresat_configs.__main__:oresat_configs"
+oresat-configs = "oresat_configs.__main__:main"
 
 [tool.setuptools.packages.find]
 exclude = ["docs*", "tests*"]

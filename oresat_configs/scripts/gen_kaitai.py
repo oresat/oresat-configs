@@ -1,6 +1,5 @@
 import os
-from argparse import Namespace
-from typing import Any
+from typing import Any, Union
 
 import canopen
 from canopen.objectdictionary import Array, ObjectDictionary, Record
@@ -9,24 +8,6 @@ from yaml import dump
 from .._yaml_to_od import get_beacon_def, load_od_configs, load_od_db
 from ..configs.cards_config import CardsConfig
 from ..configs.mission_config import MissionConfig
-
-GEN_KAITAI = "generate beacon kaitai configuration"
-
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser."""
-    parser = subparsers.add_parser("kaitai", help=GEN_KAITAI)
-    parser.description = GEN_KAITAI
-    parser.add_argument("mission_config", help="mission config path")
-    parser.add_argument("cards_config", help="cards config path")
-    parser.add_argument(
-        "-d",
-        "--dir-path",
-        default=".",
-        help="output directory path. (Default: %(default)s)",
-    )
-    parser.set_defaults(func=gen_kaitai)
-
 
 CANOPEN_TO_KAITAI_DT = {
     canopen.objectdictionary.BOOLEAN: "b1",
@@ -44,9 +25,7 @@ CANOPEN_TO_KAITAI_DT = {
 }
 
 
-def write_kaitai(
-    mission_config: MissionConfig, od: ObjectDictionary, dir_path: str = "."
-) -> None:
+def write_kaitai(mission_config: MissionConfig, od: ObjectDictionary, dir_path: str = ".") -> None:
     #  Setup pre-determined canned types
     kaitai_data: Any = {
         "meta": {
@@ -189,7 +168,7 @@ def write_kaitai(
     # Append field types for each field
     payload_size = 0
 
-    beacon_def = get_beacon_def(mission_config, od)
+    beacon_def = get_beacon_def(od, mission_config)
 
     for obj in beacon_def:
         name = (
@@ -222,10 +201,13 @@ def write_kaitai(
         dump(kaitai_data, file)
 
 
-def gen_kaitai(args: Namespace) -> None:
-    mission_config = MissionConfig.from_yaml(args.mission_config)
-    cards_config = CardsConfig.from_yaml(args.cards_config)
-    config_dir = os.path.dirname(args.cards_config)
+def gen_kaitai(cards_config_path: str, mission_config_paths: Union[str, list[str]]):
+    cards_config = CardsConfig.from_yaml(cards_config_path)
+    if isinstance(mission_config_paths, str):
+        mission_config_paths = [mission_config_paths]
+    mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
+    config_dir = os.path.dirname(cards_config_path)
     od_configs = load_od_configs(cards_config, config_dir)
     od_db = load_od_db(cards_config, od_configs)
-    write_kaitai(mission_config, od_db[cards_config.master.name], args.dir_path)
+    for mission_config in mission_configs:
+        write_kaitai(mission_config, od_db[cards_config.manager.name])

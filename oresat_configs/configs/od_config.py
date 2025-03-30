@@ -230,6 +230,8 @@ class OdConfig:
     Example:
 
     .. code-block:: yaml
+        name: abc
+        nice_name: ABC
 
         std_objects:
           - device_type
@@ -254,6 +256,10 @@ class OdConfig:
           ...
     """
 
+    name: str = "app"
+    """name for the node in snake_case (used for code generatation)."""
+    nice_name: str = "App"
+    """Nice name for node."""
     std_objects: list[str] = field(default_factory=list)
     """Standard object to include in OD."""
     objects: list[IndexObject] = field(default_factory=list)

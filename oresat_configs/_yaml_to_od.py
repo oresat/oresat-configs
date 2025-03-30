@@ -64,7 +64,7 @@ class DataType(Enum):
         elif self.name == "STR":
             default = ""
         elif self.name == "OCTET_STR":
-            default = b""
+            default = b"\x00"
         elif self.name == "DOMAIN":
             default = None
         return default
@@ -321,9 +321,10 @@ def add_pdo_objs(od: ObjectDictionary, config: OdConfig, pdo_type: str) -> None:
         if pdo.cob_id == 0:
             cob_id_offset = 0x180 if pdo_type == "tpdo" else 0x200
             cob_id = (((pdo.num - 1) % 4) * 0x100) + ((pdo.num - 1) // 4) + cob_id_offset
-            cob_id |= 1 << 30  # rtr bit, 1 for no RTR allowed
         else:
             cob_id = pdo.cob_id
+        if pdo_type == "tpdo":
+            cob_id |= 1 << 30  # no RTR
         transmission_type = pdo.sync if pdo.transmission_type == "sync" else 254
         inhibit_time = pdo.inhibit_time_ms if pdo_type == "tpdo" else 0
         sync_start_value = pdo.sync_start_value if pdo_type == "tpdo" else 0
@@ -432,7 +433,7 @@ def add_other_node_pdo_objs(
         var.pdo_mappable = True
         mapped_rec.add_member(var)
 
-        # master node mapping obj
+        # manager node mapping obj
         mapping_subindex = mapping_rec[0].default + 1
         var = Variable(f"mapping_object_{mapping_subindex}", mapping_index, mapping_subindex)
         var.access_type = "const"
@@ -474,7 +475,7 @@ def gen_od(configs: Union[OdConfig, list[OdConfig]]) -> ObjectDictionary:
     od.device_information.product_number = 0
     od.device_information.revision_number = 0
     od.device_information.order_code = 0
-    od.device_information.simple_boot_up_master = False
+    od.device_information.simple_boot_up_manager = False
     od.device_information.simple_boot_up_slave = False
     od.device_information.granularity = 8
     od.device_information.dynamic_channels_supported = False
@@ -503,7 +504,7 @@ def gen_od(configs: Union[OdConfig, list[OdConfig]]) -> ObjectDictionary:
     return od
 
 
-def gen_master_od(config: OdConfig, od_db: dict[str, ObjectDictionary]) -> ObjectDictionary:
+def gen_manager_od(config: OdConfig, od_db: dict[str, ObjectDictionary]) -> ObjectDictionary:
     od = gen_od([config])
     for node_name, node_od in od_db.items():
         for tpdo_num in range(16):
@@ -531,19 +532,20 @@ def set_od_node_id(od: ObjectDictionary, node_id: int):
     if 0x1014 in od:
         od[0x1014].default = 0x80 + node_id
         od[0x1014].value = 0x80 + node_id
+    cob_id_sub = 1
     for i in range(16):
         # RPDO
-        cob_id = (((i - 1) % 4) * 0x100) + ((i - 1) // 4) + 0x200
-        index = TPDO_COMM_START + i
-        if index in od.indices and od[index][2].value == cob_id:
-            od[index][2].default += node_id
-            od[index][2].value += node_id
+        cob_id = ((i % 4) * 0x100) + (i // 4) + 0x200
+        index = RPDO_COMM_START + i
+        if index in od.indices and (od[index][cob_id_sub].value & 0x7FF) == cob_id:
+            od[index][cob_id_sub].default += node_id
+            od[index][cob_id_sub].value += node_id
         # TPDO
-        cob_id = (((i - 1) % 4) * 0x100) + ((i - 1) // 4) + 0x180
+        cob_id = ((i % 4) * 0x100) + (i // 4) + 0x180
         index = TPDO_COMM_START + i
-        if index in od.indices and od[index][2].value == cob_id:
-            od[index][2].default += node_id
-            od[index][2].value += node_id
+        if index in od.indices and (od[index][cob_id_sub].value & 0x7FF) == cob_id:
+            od[index][cob_id_sub].default += node_id
+            od[index][cob_id_sub].value += node_id
 
 
 def load_od_configs(cards_config: CardsConfig, config_dir: str, force_download: bool = False) -> dict[str, OdConfig]:
@@ -597,10 +599,10 @@ def load_od_db(
         set_od_node_id(od, card_info.node_id)
         od_db[card_info.name] = od
 
-    master_info = cards_config.master
-    c3_od = gen_master_od(od_configs[master_info.base], od_db)
-    set_od_node_id(c3_od, master_info.node_id)
-    od_db[master_info.name] = c3_od
+    manager_info = cards_config.manager
+    c3_od = gen_manager_od(od_configs[manager_info.base], od_db)
+    set_od_node_id(c3_od, manager_info.node_id)
+    od_db[manager_info.name] = c3_od
 
     return od_db
 

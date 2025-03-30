@@ -1,20 +1,12 @@
 import os
-from argparse import Namespace
 
-from canopen.objectdictionary import (
-    REAL32,
-    REAL64,
-    UNSIGNED_TYPES,
-    ObjectDictionary,
-    Variable,
-)
+from canopen.objectdictionary import REAL32, REAL64, UNSIGNED_TYPES, ObjectDictionary, Variable
 
 from .. import __version__
-from .._yaml_to_od import load_od_configs, load_od_db
+from .._yaml_to_od import gen_od, load_od_configs, load_od_db, set_od_node_id
 from ..configs.cards_config import CardsConfig
+from ..configs.od_config import OdConfig
 from . import INDENT3, INDENT4
-
-GEN_DBC = "generate CAN dbc file for SavvyCAN"
 
 VECTOR = "Vector__XXX"  # flag for default, any, all devices
 
@@ -123,25 +115,10 @@ TPDO_COMMS_INDEX_START = 0x1800
 TPDO_MAP_INDEX_START = 0x1A00
 
 
-def register_subparser(subparsers):
-    """Registers an ArgumentParser as a subcommand of another parser."""
-    parser = subparsers.add_parser("dbc", help=GEN_DBC)
-    parser.description = GEN_DBC
-    parser.add_argument("config", help="cards config path")
-    parser.add_argument(
-        "-d",
-        "--dir-path",
-        default=".",
-        help='output directory path; default "%(default)s"',
-    )
-    parser.set_defaults(func=gen_dbc)
-
-
-def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
+def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECTOR):
     """Write CAN message/signal definitions to a dbc file."""
 
-    file_name = "oresat.dbc"
-    file_path = f"{dir_path}/{file_name}" if dir_path else file_name
+    file_name = f"{name}.dbc"
 
     lines: list[str] = [
         f'VERSION "{__version__}"',
@@ -180,9 +157,8 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
         "",
     ]
 
-    # list of cards
-    cards = list(od_db.values())
-    lines.append("BU_: " + " ".join(cards) + " ")
+    # list nodes on the network
+    lines.append("BU_: " + " ".join(list(od_db)) + " ")
     lines.append("")
 
     # general comments
@@ -190,7 +166,7 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
     lines.append("")
 
     # SYNC
-    lines.append(f"BO_ {0x80} sync: 0 c3")
+    lines.append(f"BO_ {0x80} sync: 0 {manager}")
     lines.append("")
 
     enums: list[tuple[int, str, dict[int, str]]] = []
@@ -198,30 +174,17 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
     node_comments: list[tuple[int, str]] = []
     floats: list[tuple[int, str, int]] = []
     for name, od in od_db.items():
-        if name not in cards:
-            continue
-
         node_comments.append((od.node_id, od.device_information.product_name))
 
         # EMCYs
         cob_id = 0x80 + od.node_id
         lines.append(f"BO_ {cob_id} {name}_emcy: 8 {name}")
         lines.append(f'{INDENT3}SG_ emcy_error_code : 0|16@1+ (1,0) [0|0] "" {VECTOR}')
-        lines.append(
-            f'{INDENT3}SG_ error_reg_generic : 16|1@1+ (1,0) [0|0] "" {VECTOR}'
-        )
-        lines.append(
-            f'{INDENT3}SG_ error_reg_current : 17|1@1+ (1,0) [0|0] "" {VECTOR}'
-        )
-        lines.append(
-            f'{INDENT3}SG_ error_reg_voltage : 18|1@1+ (1,0) [0|0] "" {VECTOR}'
-        )
-        lines.append(
-            f'{INDENT3}SG_ error_reg_temperature : 19|1@1+ (1,0) [0|0] "" {VECTOR}'
-        )
-        lines.append(
-            f'{INDENT3}SG_ error_reg_communication : 20|1@1+ (1,0) [0|0] "" {VECTOR}'
-        )
+        lines.append(f'{INDENT3}SG_ error_reg_generic : 16|1@1+ (1,0) [0|0] "" {VECTOR}')
+        lines.append(f'{INDENT3}SG_ error_reg_current : 17|1@1+ (1,0) [0|0] "" {VECTOR}')
+        lines.append(f'{INDENT3}SG_ error_reg_voltage : 18|1@1+ (1,0) [0|0] "" {VECTOR}')
+        lines.append(f'{INDENT3}SG_ error_reg_temperature : 19|1@1+ (1,0) [0|0] "" {VECTOR}')
+        lines.append(f'{INDENT3}SG_ error_reg_communication : 20|1@1+ (1,0) [0|0] "" {VECTOR}')
         signal = "error_reg_device_profile_specific"
         lines.append(f'{INDENT3}SG_ {signal} : 21|1@1+ (1,0) [0|0] "" {VECTOR}')
         signal = "error_reg_manufacturer_specific"
@@ -232,16 +195,10 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
 
         # PDOs
         for param_index in od:
-            if (
-                param_index >= RPDO_COMMS_INDEX_START
-                and param_index < RPDO_MAP_INDEX_START
-            ):
+            if param_index >= RPDO_COMMS_INDEX_START and param_index < RPDO_MAP_INDEX_START:
                 pdo = "rpdo"
                 comms_index_start = RPDO_COMMS_INDEX_START
-            elif (
-                param_index >= TPDO_COMMS_INDEX_START
-                and param_index < TPDO_MAP_INDEX_START
-            ):
+            elif param_index >= TPDO_COMMS_INDEX_START and param_index < TPDO_MAP_INDEX_START:
                 pdo = "tpdo"
                 comms_index_start = TPDO_COMMS_INDEX_START
             else:
@@ -253,7 +210,7 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
             cob_id = od[param_index][1].value
             sb = 0
 
-            pdos = 12 if name == "c3" else 16
+            pdos = 12 if name == manager else 16
             if cob_id & 0x7F not in [od.node_id + i for i in range(pdos // 4)]:
                 continue  # PDO for another node
 
@@ -310,26 +267,18 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
             lines.append("")
 
         # SDOs (useless for block SDO transfers)
-        if name != "c3":
+        if name != manager:
             # client / tx
             cob_id = 0x580 + od.node_id
-            lines.append(f"BO_ {cob_id} {name}_sdo_tx: 8 c3")
-            lines.append(
-                f'{INDENT3}SG_ ccs M : 5|3@1+ (1,0) [0|0] "" {name}'
-            )  # multiplexor
+            lines.append(f"BO_ {cob_id} {name}_sdo_tx: 8 {manager}")
+            lines.append(f'{INDENT3}SG_ ccs M : 5|3@1+ (1,0) [0|0] "" {name}')  # multiplexor
             # ccs = 0
-            lines.append(
-                f'{INDENT3}SG_ more_segments m0 : 0|1@1+ (1,0) [0|0] "" {name}'
-            )
+            lines.append(f'{INDENT3}SG_ more_segments m0 : 0|1@1+ (1,0) [0|0] "" {name}')
             lines.append(f'{INDENT3}SG_ data_padding m0 : 1|3@1+ (1,0) [0|0] "" {name}')
             lines.append(f'{INDENT3}SG_ toggle_bit m0 : 4|1@1+ (1,0) [0|0] "" {name}')
-            lines.append(
-                f'{INDENT3}SG_ segment_data m0 : 8|56@1+ (1,0) [0|0] "" {name}'
-            )
+            lines.append(f'{INDENT3}SG_ segment_data m0 : 8|56@1+ (1,0) [0|0] "" {name}')
             # ccs = 1
-            lines.append(
-                f'{INDENT3}SG_ size_indicated m1 : 0|1@1+ (1,0) [0|0] "" {name}'
-            )
+            lines.append(f'{INDENT3}SG_ size_indicated m1 : 0|1@1+ (1,0) [0|0] "" {name}')
             lines.append(f'{INDENT3}SG_ expedited m1 : 1|1@1+ (1,0) [0|0] "" {name}')
             lines.append(f'{INDENT3}SG_ data_padding m1 : 2|2@1+ (1,0) [0|0] "" {name}')
             lines.append(f'{INDENT3}SG_ index m1 : 8|16@1+ (1,0) [0|0] "" {name}')
@@ -343,9 +292,7 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
             # ccs = 4
             lines.append(f'{INDENT3}SG_ index m4 : 8|16@1+ (1,0) [0|0] "" {name}')
             lines.append(f'{INDENT3}SG_ subindex m4 : 24|8@1+ (1,0) [0|0] "" {name}')
-            lines.append(
-                f'{INDENT3}SG_ aboort_code m4 : 32|32@1+ (1,0) [0|0] "" {name}'
-            )
+            lines.append(f'{INDENT3}SG_ aboort_code m4 : 32|32@1+ (1,0) [0|0] "" {name}')
             # css = 5 & 6 have sub commands/multiplexor...
             lines.append("")
             enums.append((cob_id, "ccs", SDO_CSS))
@@ -354,30 +301,28 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
             # server / rx
             cob_id = 0x600 + od.node_id
             lines.append(f"BO_ {cob_id} {name}_sdo_rx: 8 {name}")
-            lines.append(
-                f'{INDENT3}SG_ scs M : 5|3@1+ (1,0) [0|0] "" c3'
-            )  # multiplexor
+            lines.append(f'{INDENT3}SG_ scs M : 5|3@1+ (1,0) [0|0] "" {manager}')  # multiplexor
             # scs = 0
-            lines.append(f'{INDENT3}SG_ toggle_bit m0 : 4|1@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ data_padding m0 : 1|3@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ last_segment m0 : 0|1@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ segment_data m0 : 8|56@1+ (1,0) [0|0] "" c3')
+            lines.append(f'{INDENT3}SG_ toggle_bit m0 : 4|1@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ data_padding m0 : 1|3@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ last_segment m0 : 0|1@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ segment_data m0 : 8|56@1+ (1,0) [0|0] "" {manager}')
             # scs = 1
-            lines.append(f'{INDENT3}SG_ toggle_bit m1 : 4|1@1+ (1,0) [0|0] "" c3')
+            lines.append(f'{INDENT3}SG_ toggle_bit m1 : 4|1@1+ (1,0) [0|0] "" {manager}')
             # scs =2
-            lines.append(f'{INDENT3}SG_ size_indicated m2 : 0|1@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ expedited m2 : 1|1@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ data_padding m2 : 2|2@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ index m2 : 8|16@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ subindex m2 : 24|8@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ data m2 : 32|32@1+ (1,0) [0|0] "" c3')
+            lines.append(f'{INDENT3}SG_ size_indicated m2 : 0|1@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ expedited m2 : 1|1@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ data_padding m2 : 2|2@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ index m2 : 8|16@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ subindex m2 : 24|8@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ data m2 : 32|32@1+ (1,0) [0|0] "" {manager}')
             # scs = 3
-            lines.append(f'{INDENT3}SG_ index m3 : 8|16@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ subindex m3 : 24|8@1+ (1,0) [0|0] "" c3')
+            lines.append(f'{INDENT3}SG_ index m3 : 8|16@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ subindex m3 : 24|8@1+ (1,0) [0|0] "" {manager}')
             # scs = 4
-            lines.append(f'{INDENT3}SG_ index m4 : 8|16@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ subindex m4 : 24|8@1+ (1,0) [0|0] "" c3')
-            lines.append(f'{INDENT3}SG_ aboort_code m4 : 32|32@1+ (1,0) [0|0] "" c3')
+            lines.append(f'{INDENT3}SG_ index m4 : 8|16@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ subindex m4 : 24|8@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ aboort_code m4 : 32|32@1+ (1,0) [0|0] "" {manager}')
             # scs = 5 & 6 have sub commands/multiplexor...
             lines.append("")
             enums.append((cob_id, "scs", SDO_SCS))
@@ -386,9 +331,7 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
         # heartbeats
         cob_id = 0x700 + od.node_id
         lines.append(f"BO_ {cob_id} {name}_heartbeat: 1 {name}")
-        lines.append(
-            f'{INDENT3}SG_ state : 0|7@1+ (1,0) [0|0] "" c3'
-        )  # bit 7 is reserved
+        lines.append(f'{INDENT3}SG_ state : 0|7@1+ (1,0) [0|0] "" {manager}')  # bit 7 is reserved
         enums.append((cob_id, "state", HB_STATES))
         lines.append("")
     lines.append("")
@@ -413,14 +356,25 @@ def write_dbc(od_db: dict[str, ObjectDictionary], dir_path: str = "."):
     for cob_id, signal, value in floats:
         lines.append(f"SIG_VALTYPE_ {cob_id} {signal} : {value};")
 
-    with open(file_path, "w") as f:
+    with open(file_name, "w") as f:
         for line in lines:
             f.write(line + "\n")
 
 
-def gen_dbc(args: Namespace):
-    cards_config = CardsConfig.from_yaml(args.config)
-    config_dir = os.path.dirname(args.config)
+def gen_dbc_node(card_od_config_path: str, common_od_config_path: str = "", node_id: int = 0x7C):
+    card_od_config = OdConfig.from_yaml(card_od_config_path)
+    if common_od_config_path:
+        common_od_config = OdConfig.from_yaml(common_od_config_path)
+        od = gen_od([card_od_config, common_od_config])
+    else:
+        od = gen_od([card_od_config])
+    set_od_node_id(od, node_id)
+    write_dbc(card_od_config.name, {card_od_config.name: od})
+
+
+def gen_dbc(cards_config_path: str):
+    cards_config = CardsConfig.from_yaml(cards_config_path)
+    config_dir = os.path.dirname(cards_config_path)
     od_configs = load_od_configs(cards_config, config_dir)
     od_db = load_od_db(cards_config, od_configs)
-    write_dbc(od_db, args.dir_path)
+    write_dbc("oresat", od_db, cards_config.manager.name)

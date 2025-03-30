@@ -1,6 +1,6 @@
 from ._yaml_to_od import (
     DataType,
-    gen_master_od,
+    gen_manager_od,
     gen_od,
     load_od_configs,
     load_od_db,
@@ -10,19 +10,17 @@ from .configs.cards_config import CardsConfig
 from .configs.mission_config import MissionConfig
 from .configs.od_config import OdConfig
 from .scripts import __version__
-from .scripts.gen_canopend_master import (
-    write_canopend_fram_def,
-    write_canopend_master,
-    write_canopend_mission_defs,
-    write_canopend_nodes,
-    write_canopend_od,
-    write_canopend_od_all,
+from .scripts.gen_canopend import gen_canopend_files
+from .scripts.gen_canopend_config import (
+    gen_canopend_card_config,
+    gen_canopend_manager_od_config,
+    gen_canopend_od_config,
 )
-from .scripts.gen_canopennode import write_canopennode
-from .scripts.gen_dbc import write_dbc
-from .scripts.gen_dcf import write_dcf
-from .scripts.gen_kaitai import write_kaitai
-from .scripts.gen_xtce import write_xtce
+from .scripts.gen_canopend_master import gen_canopend_manager_files
+from .scripts.gen_canopennode import gen_canopennode_files
+from .scripts.gen_dbc import gen_dbc, gen_dbc_node
+from .scripts.gen_kaitai import gen_kaitai
+from .scripts.gen_xtce import gen_xtce
 
 __all__ = [
     "__version__",
@@ -31,19 +29,18 @@ __all__ = [
     "OdConfig",
     "MissionConfig",
     "gen_od",
-    "gen_master_od",
+    "gen_manager_od",
     "load_od_db",
     "load_od_configs",
     "set_od_node_id",
-    "write_canopend_fram_def",
-    "write_canopend_mission_defs",
-    "write_canopend_master",
-    "write_canopend_nodes",
-    "write_canopend_od",
-    "write_canopend_od_all",
-    "write_canopennode",
-    "write_dbc",
-    "write_dcf",
-    "write_kaitai",
-    "write_xtce",
+    "gen_canopend_card_config",
+    "gen_canopend_files",
+    "gen_canopend_od_config",
+    "gen_canopend_manager_files",
+    "gen_canopend_manager_od_config",
+    "gen_canopennode_files",
+    "gen_dbc",
+    "gen_dbc_node",
+    "gen_kaitai",
+    "gen_xtce",
 ]

@@ -49,7 +49,7 @@ class ConfigInfo:
 class CardsConfig:
     configs: list[ConfigInfo]
     cards: list[CardInfo]
-    master: CardInfo
+    manager: CardInfo
 
     @classmethod
     def from_yaml(cls, config_path: Union[str, Path]) -> CardsConfig:
