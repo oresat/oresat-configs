@@ -20,6 +20,7 @@ from .scripts.gen_canopend_master import gen_canopend_manager_files
 from .scripts.gen_canopennode import gen_canopennode_files
 from .scripts.gen_dbc import gen_dbc, gen_dbc_node
 from .scripts.gen_kaitai import gen_kaitai
+from .scripts.gen_rst_manager import gen_rst_manager_files
 from .scripts.gen_xtce import gen_xtce
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
     "gen_canopennode_files",
     "gen_dbc",
     "gen_dbc_node",
+    "gen_rst_manager_files",
     "gen_kaitai",
     "gen_xtce",
 ]

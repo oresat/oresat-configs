@@ -1,16 +1,12 @@
-"""Generate beacon rst files."""
-
 import os
-import sys
-from pathlib import Path
-
-_FILE_PATH = os.path.dirname(os.path.abspath(__file__ + "/../.."))
-sys.path.insert(0, _FILE_PATH)
 
 import bitstring
 import canopen
+from canopen.objectdictionary import ObjectDictionary
 
-from oresat_configs import Mission, OreSatConfig
+from .._yaml_to_od import get_beacon_def, load_od_configs, load_od_db
+from ..configs.cards_config import CardsConfig
+from ..configs.mission_config import MissionConfig
 
 OD_DATA_TYPES = {
     canopen.objectdictionary.BOOLEAN: "bool",
@@ -31,33 +27,30 @@ OD_DATA_TYPES = {
 """Nice names for CANopen data types."""
 
 
-def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
-    """Genetate a rst file for a beacon definition."""
-
-    title = "Beacon Definition"
+def write_beacon_rst_files(
+    manager: str, mission_config: list[MissionConfig], od: ObjectDictionary, dir_path: str
+):
+    title = f"{mission_config.nice_name} Beacon Definition"
     header_title = "AX.25 Header"
     lines = [
         f"{title}\n",
-        f'{"=" * len(title)}\n',
-        "\n",
-        f"YAML configuration file that defines this beacon can be found at: {url}\n",
+        f"{'=' * len(title)}\n",
         "\n",
         f"{header_title}\n",
-        f'{"-" * len(header_title)}\n',
+        f"{'-' * len(header_title)}\n",
         "\n",
     ]
 
-    c3_od = config.od_db["c3"]
-    src_callsign = c3_od["beacon"]["src_callsign"].value
-    src_callsign = src_callsign + " " * (6 - len(src_callsign))
-    src_ssid = c3_od["beacon"]["src_ssid"].value
-    dest_callsign = c3_od["beacon"]["dest_callsign"].value
-    dest_callsign = dest_callsign + " " * (6 - len(dest_callsign))
-    dest_ssid = c3_od["beacon"]["dest_ssid"].value
-    command = c3_od["beacon"]["command"].value
-    response = c3_od["beacon"]["response"].value
-    control = c3_od["beacon"]["control"].value
-    pid = c3_od["beacon"]["pid"].value
+    src_callsign = mission_config.beacon.ax25.src_callsign
+    src_callsign += " " * (6 - len(src_callsign))
+    src_ssid = mission_config.beacon.ax25.src_ssid
+    dest_callsign = mission_config.beacon.ax25.dest_callsign
+    dest_callsign += " " * (6 - len(dest_callsign))
+    dest_ssid = mission_config.beacon.ax25.dest_ssid
+    command = mission_config.beacon.ax25.command
+    response = mission_config.beacon.ax25.response
+    control = mission_config.beacon.ax25.control
+    pid = mission_config.beacon.ax25.pid
 
     reserved_bits = 0b0110_0000
     end_of_addresses = 0b1
@@ -128,9 +121,9 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
     lines.append("Total header length: 16 octets\n")
     lines.append("\n")
 
-    def_title = "Packet"
+    def_title = "Payload"
     lines.append(f"{def_title}\n")
-    lines.append(f'{"-" * len(def_title)}\n')
+    lines.append(f"{'-' * len(def_title)}\n")
     lines.append("\n")
     lines.append(".. csv-table::\n")
     lines.append(
@@ -138,14 +131,36 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
     )
     lines.append("\n")
     offset = 0
+
     size = len(sd)
     desc = "\nax.25 packet header (see above)\n"
     desc = desc.replace("\n", "\n   ")
-    lines.append(f'   "{offset}", "c3", "ax25_header", "", "octet_str", "{size}", "{desc}"\n')
+    lines.append(
+        f'   "{offset}", "{manager}", "ax25_header", "", "octet_str", "{size}", "{desc}"\n'
+    )
     offset += size
 
-    for obj in config.beacon_def:
-        if isinstance(obj.parent, canopen.ObjectDictionary):
+    size = 3
+    desc = "the aprs start characters (always {{z)"
+    lines.append(
+        f'   "{offset}", "{manager}", "beacon_start_chars", "", "str", "{size}", "{desc}"\n'
+    )
+    offset += size
+
+    size = 1
+    desc = f"mission id (always {mission_config.id})"
+    lines.append(f'   "{offset}", "{manager}", "mission_id", "", "uint8", "{size}", "{desc}"\n')
+    offset += size
+
+    size = 1
+    desc = f"beacon revision (currently {mission_config.beacon.revision})"
+    lines.append(
+        f'   "{offset}", "{manager}", "beacon_revision", "", "uint8", "{size}", "{desc}"\n'
+    )
+    offset += size
+
+    for obj in get_beacon_def(od, mission_config):
+        if isinstance(obj.parent, ObjectDictionary):
             index_name = obj.name
             subindex_name = ""
         else:
@@ -153,7 +168,7 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
             subindex_name = obj.name
 
         if obj.index < 0x5000:
-            card = "c3"
+            card = f"{manager}"
             name = index_name
             name += "_" + subindex_name if subindex_name else ""
         else:
@@ -170,8 +185,7 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
         if obj.name in ["start_chars", "revision"]:
             desc += f": {obj.value}\n"
         if obj.name == "satellite_id":
-            sat = Mission.from_id(obj.value)
-            desc += f": {sat.id}\n"
+            desc += f": {mission_config.id}\n"
         if obj.value_descriptions:
             desc += "\n\nValue Descriptions:\n"
             for value, descr in obj.value_descriptions.items():
@@ -188,12 +202,15 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
         offset += size
 
     size = 4
-    lines.append(f'   "{offset}", "c3", "crc32", "", "uint32", "{size}", "packet checksum"\n')
+    lines.append(
+        f'   "{offset}", "{manager}", "crc32", "", "uint32", "{size}", "packet checksum"\n'
+    )
     offset += size
 
     lines.append("\n")
     lines.append(f"Total packet length: {offset} octets\n")
 
+    file_path = os.path.join(dir_path, f"{mission_config.name}_beacon.rst")
     dir_path = os.path.dirname(file_path)
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
@@ -202,16 +219,16 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
         f.writelines(lines)
 
 
-def gen_beacon_rst_files() -> None:
-    """Generate all beacon rst files."""
+def gen_rst_manager_files(cards_config_path: str, mission_config_paths: list[str], dir_path: str):
+    cards_config = CardsConfig.from_yaml(cards_config_path)
+    mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
+    config_dir = os.path.dirname(cards_config_path)
 
-    parent_dir = os.path.dirname(os.path.abspath(__file__ + "/.."))
-    for mission in Mission:
-        mission_name = mission.name.lower()
-        url = (
-            f"https://github.com/oresat/oresat-configs/blob/master/oresat_configs/{mission_name}"
-            "/beacon.yaml"
-        )
-        file_path = f"{parent_dir}/{mission_name}/gen"
-        Path(file_path).mkdir(parents=True, exist_ok=True)
-        gen_beacon_rst(OreSatConfig(mission), f"{file_path}/beacon.rst", url)
+    od_configs = load_od_configs(cards_config, config_dir)
+    od_db = load_od_db(cards_config, od_configs)
+
+    os.makedirs(dir_path, exist_ok=True)
+
+    manager_name = cards_config.manager.name
+    for mission_config in mission_configs:
+        write_beacon_rst_files(manager_name, mission_config, od_db[manager_name], dir_path)
