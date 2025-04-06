@@ -465,13 +465,16 @@ def add_std_objects(od: ObjectDictionary, od_config: OdConfig):
 
 
 def gen_od(configs: Union[OdConfig, list[OdConfig]]) -> ObjectDictionary:
+    if isinstance(configs, OdConfig):
+        configs = [configs]
+
     od = ObjectDictionary()
     od.bitrate = 1_000_000  # bps
     od.node_id = 0
     od.device_information.allowed_baudrates = set([1000])  # kpbs
     od.device_information.vendor_name = "PSAS"
     od.device_information.vendor_number = 0
-    od.device_information.product_name = ""
+    od.device_information.product_name = configs[0].name
     od.device_information.product_number = 0
     od.device_information.revision_number = 0
     od.device_information.order_code = 0
@@ -483,9 +486,6 @@ def gen_od(configs: Union[OdConfig, list[OdConfig]]) -> ObjectDictionary:
     od.device_information.nr_of_RXPDO = 0
     od.device_information.nr_of_TXPDO = 0
     od.device_information.LSS_supported = False
-
-    if isinstance(configs, OdConfig):
-        configs = [configs]
 
     for config in configs:
         add_std_objects(od, config)
@@ -595,6 +595,8 @@ def load_od_db(
             tmp.append(od_configs[card_info.base])
         if card_info.common:
             tmp.append(od_configs[card_info.common])
+        if len(tmp) == 0:
+            continue
         od = gen_od(tmp)
         set_od_node_id(od, card_info.node_id)
         od_db[card_info.name] = od

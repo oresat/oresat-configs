@@ -116,8 +116,6 @@ TPDO_MAP_INDEX_START = 0x1A00
 
 
 def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECTOR):
-    """Write CAN message/signal definitions to a dbc file."""
-
     file_name = f"{name}.dbc"
 
     lines: list[str] = [
@@ -169,27 +167,34 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
     lines.append(f"BO_ {0x80} sync: 0 {manager}")
     lines.append("")
 
+    # TIME
+    lines.append(f"BO_ {0x100} time: 6 {manager}")
+    lines.append(f'{INDENT3}SG_ time_since_midnight : 0|28@1+ (1,0) [0|0] "ms" {VECTOR}')
+    lines.append(f'{INDENT3}SG_ days_since_january_1_1984 : 32|16@1+ (1,0) [0|0] "days" {VECTOR}')
+    lines.append("")
+
     enums: list[tuple[int, str, dict[int, str]]] = []
     signal_comments: list[tuple[int, str, str]] = []
     node_comments: list[tuple[int, str]] = []
     floats: list[tuple[int, str, int]] = []
     for name, od in od_db.items():
-        node_comments.append((od.node_id, od.device_information.product_name))
+        node_comments.append((od.node_id, name))
+        consumer = manager if name != manager else VECTOR
 
         # EMCYs
         cob_id = 0x80 + od.node_id
         lines.append(f"BO_ {cob_id} {name}_emcy: 8 {name}")
-        lines.append(f'{INDENT3}SG_ emcy_error_code : 0|16@1+ (1,0) [0|0] "" {VECTOR}')
-        lines.append(f'{INDENT3}SG_ error_reg_generic : 16|1@1+ (1,0) [0|0] "" {VECTOR}')
-        lines.append(f'{INDENT3}SG_ error_reg_current : 17|1@1+ (1,0) [0|0] "" {VECTOR}')
-        lines.append(f'{INDENT3}SG_ error_reg_voltage : 18|1@1+ (1,0) [0|0] "" {VECTOR}')
-        lines.append(f'{INDENT3}SG_ error_reg_temperature : 19|1@1+ (1,0) [0|0] "" {VECTOR}')
-        lines.append(f'{INDENT3}SG_ error_reg_communication : 20|1@1+ (1,0) [0|0] "" {VECTOR}')
+        lines.append(f'{INDENT3}SG_ emcy_error_code : 0|16@1+ (1,0) [0|0] "" {consumer}')
+        lines.append(f'{INDENT3}SG_ error_reg_generic : 16|1@1+ (1,0) [0|0] "" {consumer}')
+        lines.append(f'{INDENT3}SG_ error_reg_current : 17|1@1+ (1,0) [0|0] "" {consumer}')
+        lines.append(f'{INDENT3}SG_ error_reg_voltage : 18|1@1+ (1,0) [0|0] "" {consumer}')
+        lines.append(f'{INDENT3}SG_ error_reg_temperature : 19|1@1+ (1,0) [0|0] "" {consumer}')
+        lines.append(f'{INDENT3}SG_ error_reg_communication : 20|1@1+ (1,0) [0|0] "" {consumer}')
         signal = "error_reg_device_profile_specific"
-        lines.append(f'{INDENT3}SG_ {signal} : 21|1@1+ (1,0) [0|0] "" {VECTOR}')
+        lines.append(f'{INDENT3}SG_ {signal} : 21|1@1+ (1,0) [0|0] "" {consumer}')
         signal = "error_reg_manufacturer_specific"
-        lines.append(f'{INDENT3}SG_ {signal} : 23|1@1+ (1,0) [0|0] "" {VECTOR}')
-        lines.append(f'{INDENT3}SG_ emcy_data : 24|40@1+ (1,0) [0|0] "" {VECTOR}')
+        lines.append(f'{INDENT3}SG_ {signal} : 23|1@1+ (1,0) [0|0] "" {consumer}')
+        lines.append(f'{INDENT3}SG_ emcy_data : 24|40@1+ (1,0) [0|0] "" {consumer}')
         lines.append("")
         enums.append((cob_id, "emcy_error_code", EMCY_ERROR_CODES))
 
@@ -198,16 +203,20 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
             if param_index >= RPDO_COMMS_INDEX_START and param_index < RPDO_MAP_INDEX_START:
                 pdo = "rpdo"
                 comms_index_start = RPDO_COMMS_INDEX_START
+                pdo_producer = consumer
+                pdo_consumer = name
             elif param_index >= TPDO_COMMS_INDEX_START and param_index < TPDO_MAP_INDEX_START:
                 pdo = "tpdo"
                 comms_index_start = TPDO_COMMS_INDEX_START
+                pdo_producer = name
+                pdo_consumer = consumer
             else:
                 continue
 
             pdo_lines = []
             mapping_index = param_index + 0x200
             num = param_index - comms_index_start + 1
-            cob_id = od[param_index][1].value
+            cob_id = od[param_index][1].value & 0x7FF
             sb = 0
 
             pdos = 12 if name == manager else 16
@@ -237,7 +246,7 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
                     high = obj.max if obj.max is not None else 0
                     pdo_lines.append(
                         f"{INDENT3}SG_ {signal} : {sb}|{mapped_size}@1{sign} ({obj.factor},0) "
-                        f'[{low}|{high}] "{obj.unit}" {VECTOR}'
+                        f'[{low}|{high}] "{obj.unit}" {pdo_consumer}'
                     )
 
                     if obj.description:
@@ -254,7 +263,7 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
                     bits = [bits] if isinstance(bits, int) else bits
                     pdo_lines.append(
                         f"{INDENT3}SG_ {n_signal} : {sb + max(bits)}|{len(bits)}@1+ (1,0) "
-                        f'[0|0] "" {VECTOR}'
+                        f'[0|0] "" {pdo_consumer}'
                     )
 
                 sb += mapped_size
@@ -262,7 +271,7 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
                     enums.append((cob_id, signal, obj.value_descriptions))
 
             size = sb // 8
-            lines.append(f"BO_ {cob_id} {name}_{pdo}_{num}: {size} {name}")
+            lines.append(f"BO_ {cob_id} {name}_{pdo}_{num}: {size} {pdo_producer}")
             lines += pdo_lines
             lines.append("")
 
@@ -270,68 +279,68 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
         if name != manager:
             # client / tx
             cob_id = 0x580 + od.node_id
-            lines.append(f"BO_ {cob_id} {name}_sdo_tx: 8 {manager}")
-            lines.append(f'{INDENT3}SG_ ccs M : 5|3@1+ (1,0) [0|0] "" {name}')  # multiplexor
+            lines.append(f"BO_ {cob_id} {name}_sdo_tx: 8 {name}")
+            lines.append(f'{INDENT3}SG_ ccs M : 5|3@1+ (1,0) [0|0] "" {consumer}')  # multiplexor
             # ccs = 0
-            lines.append(f'{INDENT3}SG_ more_segments m0 : 0|1@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ data_padding m0 : 1|3@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ toggle_bit m0 : 4|1@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ segment_data m0 : 8|56@1+ (1,0) [0|0] "" {name}')
+            lines.append(f'{INDENT3}SG_ more_segments m0 : 0|1@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ data_padding m0 : 1|3@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ toggle_bit m0 : 4|1@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ segment_data m0 : 8|56@1+ (1,0) [0|0] "" {consumer}')
             # ccs = 1
-            lines.append(f'{INDENT3}SG_ size_indicated m1 : 0|1@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ expedited m1 : 1|1@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ data_padding m1 : 2|2@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ index m1 : 8|16@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ subindex m1 : 24|8@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ data m1 : 32|32@1+ (1,0) [0|0] "" {name}')
+            lines.append(f'{INDENT3}SG_ size_indicated m1 : 0|1@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ expedited m1 : 1|1@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ data_padding m1 : 2|2@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ index m1 : 8|16@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ subindex m1 : 24|8@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ data m1 : 32|32@1+ (1,0) [0|0] "" {consumer}')
             # ccs = 2
-            lines.append(f'{INDENT3}SG_ index m2 : 8|16@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ subindex m2 : 24|8@1+ (1,0) [0|0] "" {name}')
+            lines.append(f'{INDENT3}SG_ index m2 : 8|16@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ subindex m2 : 24|8@1+ (1,0) [0|0] "" {consumer}')
             # css = 3
-            lines.append(f'{INDENT3}SG_ toggle_bit m3 : 4|1@1+ (1,0) [0|0] "" {name}')
+            lines.append(f'{INDENT3}SG_ toggle_bit m3 : 4|1@1+ (1,0) [0|0] "" {consumer}')
             # ccs = 4
-            lines.append(f'{INDENT3}SG_ index m4 : 8|16@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ subindex m4 : 24|8@1+ (1,0) [0|0] "" {name}')
-            lines.append(f'{INDENT3}SG_ aboort_code m4 : 32|32@1+ (1,0) [0|0] "" {name}')
+            lines.append(f'{INDENT3}SG_ index m4 : 8|16@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ subindex m4 : 24|8@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ abort_code m4 : 32|32@1+ (1,0) [0|0] "" {consumer}')
             # css = 5 & 6 have sub commands/multiplexor...
             lines.append("")
             enums.append((cob_id, "ccs", SDO_CSS))
-            enums.append((cob_id, "aboort_code", SDO_ABORT_CODES))
+            enums.append((cob_id, "abort_code", SDO_ABORT_CODES))
 
             # server / rx
             cob_id = 0x600 + od.node_id
             lines.append(f"BO_ {cob_id} {name}_sdo_rx: 8 {name}")
-            lines.append(f'{INDENT3}SG_ scs M : 5|3@1+ (1,0) [0|0] "" {manager}')  # multiplexor
+            lines.append(f'{INDENT3}SG_ scs M : 5|3@1+ (1,0) [0|0] "" {consumer}')  # multiplexor
             # scs = 0
-            lines.append(f'{INDENT3}SG_ toggle_bit m0 : 4|1@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ data_padding m0 : 1|3@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ last_segment m0 : 0|1@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ segment_data m0 : 8|56@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ toggle_bit m0 : 4|1@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ data_padding m0 : 1|3@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ last_segment m0 : 0|1@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ segment_data m0 : 8|56@1+ (1,0) [0|0] "" {consumer}')
             # scs = 1
-            lines.append(f'{INDENT3}SG_ toggle_bit m1 : 4|1@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ toggle_bit m1 : 4|1@1+ (1,0) [0|0] "" {consumer}')
             # scs =2
-            lines.append(f'{INDENT3}SG_ size_indicated m2 : 0|1@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ expedited m2 : 1|1@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ data_padding m2 : 2|2@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ index m2 : 8|16@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ subindex m2 : 24|8@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ data m2 : 32|32@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ size_indicated m2 : 0|1@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ expedited m2 : 1|1@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ data_padding m2 : 2|2@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ index m2 : 8|16@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ subindex m2 : 24|8@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ data m2 : 32|32@1+ (1,0) [0|0] "" {consumer}')
             # scs = 3
-            lines.append(f'{INDENT3}SG_ index m3 : 8|16@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ subindex m3 : 24|8@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ index m3 : 8|16@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ subindex m3 : 24|8@1+ (1,0) [0|0] "" {consumer}')
             # scs = 4
-            lines.append(f'{INDENT3}SG_ index m4 : 8|16@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ subindex m4 : 24|8@1+ (1,0) [0|0] "" {manager}')
-            lines.append(f'{INDENT3}SG_ aboort_code m4 : 32|32@1+ (1,0) [0|0] "" {manager}')
+            lines.append(f'{INDENT3}SG_ index m4 : 8|16@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ subindex m4 : 24|8@1+ (1,0) [0|0] "" {consumer}')
+            lines.append(f'{INDENT3}SG_ abort_code m4 : 32|32@1+ (1,0) [0|0] "" {consumer}')
             # scs = 5 & 6 have sub commands/multiplexor...
             lines.append("")
             enums.append((cob_id, "scs", SDO_SCS))
-            enums.append((cob_id, "aboort_code", SDO_ABORT_CODES))
+            enums.append((cob_id, "abort_code", SDO_ABORT_CODES))
 
         # heartbeats
         cob_id = 0x700 + od.node_id
         lines.append(f"BO_ {cob_id} {name}_heartbeat: 1 {name}")
-        lines.append(f'{INDENT3}SG_ state : 0|7@1+ (1,0) [0|0] "" {manager}')  # bit 7 is reserved
+        lines.append(f'{INDENT3}SG_ state : 0|7@1+ (1,0) [0|0] "" {consumer}')  # bit 7 is reserved
         enums.append((cob_id, "state", HB_STATES))
         lines.append("")
     lines.append("")

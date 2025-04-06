@@ -353,7 +353,7 @@ def write_canopend_nodes(cards_config: CardsConfig, dir_path: str):
         base = card.base.upper() if card.base else "NONE"
         line += f", NodeBase.{base}"
         if card.child:
-            line += f', "{card.child.upper()}"'
+            line += f", {card.child.upper()}"
         lines.append(line + "\n")
 
     os.makedirs(dir_path, exist_ok=True)
