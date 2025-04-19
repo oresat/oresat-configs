@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
+    "bitstring",
     "canopen",
     "dacite",
     "pyyaml",
