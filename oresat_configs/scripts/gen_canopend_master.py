@@ -139,7 +139,7 @@ def write_canopend_manager_od(
         "from enum import Enum\n\n",
     ]
 
-    line = "from oresat_libcanopend import DataType, Entry"
+    line = "from oresat_canopend import DataType, Entry"
     if bitfields:
         line += ", EntryBitField"
     line += "\n"
