@@ -372,6 +372,7 @@ def write_canopennode_h(od: canopen.ObjectDictionary, dir_path: str = ".") -> No
         "#ifndef OD_H",
         "#define OD_H",
         "",
+        '#include "301/CO_ODinterface.h"',
         "#include <assert.h>",
         "#include <stdbool.h>",
         "#include <stdint.h>",
@@ -439,9 +440,6 @@ def write_canopennode_h(od: canopen.ObjectDictionary, dir_path: str = ".") -> No
 
     # add nice #defines for indexes and subindex values
     for i in od:
-        if i < 0x2000:
-            continue  # only care about common, card, and RPDO mapped objects
-
         name = od[i].name
         lines.append(f"#define OD_INDEX_{name.upper()} 0x{i:X}")
 
