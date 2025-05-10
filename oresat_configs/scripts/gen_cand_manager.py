@@ -8,10 +8,10 @@ from ..configs.cards_config import CardInfo, CardsConfig
 from ..configs.mission_config import MissionConfig, pack_beacon_header
 from ..configs.od_config import OdConfig
 from . import INDENT4, INDENT8, INDENT12, INDENT16, __version__, snake_to_camel
-from .gen_canopend import make_bitfield_lines, make_enum_lines, write_canopend_od
+from .gen_cand import make_bitfield_lines, make_enum_lines, write_cand_od
 
 
-def write_canopend_manager_od(
+def write_cand_manager_od(
     name: str,
     od: ObjectDictionary,
     cards_config: Optional[CardsConfig],
@@ -139,7 +139,7 @@ def write_canopend_manager_od(
         "from enum import Enum\n\n",
     ]
 
-    line = "from oresat_canopend import DataType, Entry"
+    line = "from oresat_cand import DataType, Entry"
     if bitfields:
         line += ", EntryBitField"
     line += "\n"
@@ -209,7 +209,7 @@ def write_canopend_manager_od(
         f.writelines(lines)
 
 
-def write_canopend_mission_defs(
+def write_cand_mission_defs(
     node_name: str,
     mission_configs: list[MissionConfig],
     cards_config: CardsConfig,
@@ -298,7 +298,7 @@ def write_canopend_mission_defs(
             f.writelines(mission_lines)
 
 
-def write_canopend_fram_def(card: CardInfo, fram_def: list[Variable], dir_path: str):
+def write_cand_fram_def(card: CardInfo, fram_def: list[Variable], dir_path: str):
     node_name_camel = snake_to_camel(card.name)
     fram_lines = [
         f"from .{card.name}_od import {node_name_camel}Entry\n",
@@ -314,7 +314,7 @@ def write_canopend_fram_def(card: CardInfo, fram_def: list[Variable], dir_path: 
         f.writelines(fram_lines)
 
 
-def write_canopend_nodes(cards_config: CardsConfig, dir_path: str):
+def write_cand_nodes(cards_config: CardsConfig, dir_path: str):
     lines = [
         "from dataclasses import dataclass\n",
         "from enum import Enum, auto\n",
@@ -362,13 +362,11 @@ def write_canopend_nodes(cards_config: CardsConfig, dir_path: str):
         f.writelines(lines)
 
 
-def write_canopend_od_all(
-    cards_config: CardsConfig, od_configs: dict[str, OdConfig], dir_path: str
-):
+def write_cand_od_all(cards_config: CardsConfig, od_configs: dict[str, OdConfig], dir_path: str):
     os.makedirs(dir_path, exist_ok=True)
     for name, od_config in od_configs.items():
         od = gen_od([od_config])
-        write_canopend_od(name, od, dir_path, add_tpdos=False)
+        write_cand_od(name, od, dir_path, add_tpdos=False)
     od_db = load_od_db(cards_config, od_configs)
 
     common_od_configs = {}
@@ -376,7 +374,7 @@ def write_canopend_od_all(
         if card.common:
             common_od_configs[card.common] = od_configs[card.common]
 
-    write_canopend_manager_od(
+    write_cand_manager_od(
         cards_config.manager.name,
         od_db[cards_config.manager.name],
         cards_config,
@@ -385,9 +383,7 @@ def write_canopend_od_all(
     )
 
 
-def gen_canopend_manager_files(
-    cards_config_path: str, mission_config_paths: list[str], dir_path: str
-):
+def gen_cand_manager_files(cards_config_path: str, mission_config_paths: list[str], dir_path: str):
     cards_config = CardsConfig.from_yaml(cards_config_path)
     mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
     config_dir = os.path.dirname(cards_config_path)
@@ -398,8 +394,8 @@ def gen_canopend_manager_files(
         open(init_file, "w").close()
 
     od_configs = load_od_configs(cards_config, config_dir)
-    write_canopend_od_all(cards_config, od_configs, dir_path)
+    write_cand_od_all(cards_config, od_configs, dir_path)
     manager_name = cards_config.manager.name
-    write_canopend_mission_defs(manager_name, mission_configs, cards_config, dir_path)
-    write_canopend_fram_def(cards_config.manager, od_configs[manager_name].fram, dir_path)
-    write_canopend_nodes(cards_config, dir_path)
+    write_cand_mission_defs(manager_name, mission_configs, cards_config, dir_path)
+    write_cand_fram_def(cards_config.manager, od_configs[manager_name].fram, dir_path)
+    write_cand_nodes(cards_config, dir_path)

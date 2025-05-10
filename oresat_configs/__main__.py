@@ -1,8 +1,8 @@
 import argparse
 
 from . import __version__
-from .scripts.gen_canopend import gen_canopend_files
-from .scripts.gen_canopend_master import gen_canopend_manager_files
+from .scripts.gen_cand import gen_cand_files
+from .scripts.gen_cand_manager import gen_cand_manager_files
 from .scripts.gen_canopennode import gen_canopennode_files
 from .scripts.gen_dbc import gen_dbc, gen_dbc_node
 from .scripts.gen_kaitai import gen_kaitai
@@ -15,7 +15,7 @@ def main():
 
     subparsers = parser.add_subparsers(dest="subcommand")
 
-    subparser = subparsers.add_parser("canopend", help="generate files for an canopend project")
+    subparser = subparsers.add_parser("cand", help="generate files for an cand project")
     subparser.add_argument("od_config", help="path to od config")
     subparser.add_argument(
         "-d",
@@ -26,7 +26,7 @@ def main():
     )
 
     subparser = subparsers.add_parser(
-        "canopend-manager", help="generate files for an manager canopend project"
+        "cand-manager", help="generate files for an manager cand project"
     )
     subparser.add_argument("cards_config", help="path to cards config")
     subparser.add_argument("mission_configs", nargs="+", help="paths to mission configs")
@@ -91,10 +91,10 @@ def main():
 
     args = parser.parse_args()
 
-    if args.subcommand == "canopend":
-        gen_canopend_files(args.od_config, args.dir_path)
-    elif args.subcommand == "canopend-manager":
-        gen_canopend_manager_files(args.cards_config, args.mission_configs, args.dir_path)
+    if args.subcommand == "cand":
+        gen_cand_files(args.od_config, args.dir_path)
+    elif args.subcommand == "cand-manager":
+        gen_cand_manager_files(args.cards_config, args.mission_configs, args.dir_path)
     elif args.subcommand == "canopennode":
         gen_canopennode_files(args.base_od_config, args.common_od_config, args.dir_path)
     elif args.subcommand == "dbc":

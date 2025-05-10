@@ -29,7 +29,7 @@ def make_bitfield_lines(name, bitfields) -> list[str]:
     return lines
 
 
-def write_canopend_od(name: str, od: ObjectDictionary, dir_path: str = ".", add_tpdos: bool = True):
+def write_cand_od(name: str, od: ObjectDictionary, dir_path: str = ".", add_tpdos: bool = True):
     enums = {}
     bitfields = {}
     entries = {}
@@ -86,7 +86,7 @@ def write_canopend_od(name: str, od: ObjectDictionary, dir_path: str = ".", add_
         "from enum import Enum\n\n",
     ]
 
-    line = "from oresat_canopend import DataType, Entry"
+    line = "from oresat_cand import DataType, Entry"
     if bitfields:
         line += ", EntryBitField"
     line += "\n"
@@ -140,7 +140,7 @@ def write_canopend_od(name: str, od: ObjectDictionary, dir_path: str = ".", add_
         f.writelines(lines)
 
 
-def gen_canopend_files(od_config_path: str, dir_path: str):
+def gen_cand_files(od_config_path: str, dir_path: str):
     od_config = OdConfig.from_yaml(od_config_path)
     od = gen_od([od_config])
 
@@ -151,4 +151,4 @@ def gen_canopend_files(od_config_path: str, dir_path: str):
     if not os.path.isfile(init_file):
         open(init_file, "w").close()
 
-    write_canopend_od(od_config.name, od, dir_path)
+    write_cand_od(od_config.name, od, dir_path)

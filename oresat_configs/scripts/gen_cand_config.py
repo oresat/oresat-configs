@@ -8,7 +8,7 @@ from ..configs.od_config import OdConfig
 from .gen_dcf import make_dcf_objects_lines
 
 
-def write_canopend_od_config(od: canopen.ObjectDictionary):
+def write_cand_od_config(od: canopen.ObjectDictionary):
     lines = ["[Objects]"]
 
     indexes = sorted(od.indices)
@@ -25,21 +25,21 @@ def write_canopend_od_config(od: canopen.ObjectDictionary):
             f.write(line + "\n")
 
 
-def gen_canopend_od_config(od_config_path: str):
+def gen_cand_od_config(od_config_path: str):
     od_config = OdConfig.from_yaml(od_config_path)
     od = gen_od([od_config])
-    write_canopend_od_config(od)
+    write_cand_od_config(od)
 
 
-def gen_canopend_manager_od_config(cards_config_path: str):
+def gen_cand_manager_od_config(cards_config_path: str):
     cards_config = CardsConfig.from_yaml(cards_config_path)
     config_dir = os.path.dirname(cards_config_path)
     od_configs = load_od_configs(cards_config, config_dir)
     od_db = load_od_db(cards_config, od_configs)
-    write_canopend_od_config(od_db[cards_config.manager.name])
+    write_cand_od_config(od_db[cards_config.manager.name])
 
 
-def gen_canopend_card_config(name: str, node_id: int):
+def gen_cand_card_config(name: str, node_id: int):
     lines = [
         "[Card]",
         f"Name={name}",
