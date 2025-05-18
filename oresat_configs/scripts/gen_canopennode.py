@@ -282,14 +282,14 @@ def write_canopennode_c(od: ObjectDictionary, dir_path: str | Path) -> None:
 def decl_type(obj: Variable, name: str) -> list[str]:
     """Generates a type declaration for an ODVariable"""
 
-    ctype = DATA_TYPE_C_TYPES
+    ctype = DATA_TYPE_C_TYPES[DataType(obj.data_type)]
     if obj.data_type == DataType.DOMAIN:
         return []  # skip domains
     if obj.data_type in (DataType.STR, DataType.UNICODE_STR):
-        return [f"{INDENT4}{ctype[obj.data_type]} {name}[{len(obj.default) + 1}];"]  # + 1 for '\0'
+        return [f"{INDENT4}{ctype} {name}[{len(obj.default) + 1}];"]  # + 1 for '\0'
     if obj.data_type == DataType.OCTET_STR:
-        return [f"{INDENT4}{ctype[obj.data_type]} {name}[{len(obj.default)}];"]
-    return [f"{INDENT4}{ctype[obj.data_type]} {name};"]
+        return [f"{INDENT4}{ctype} {name}[{len(obj.default)}];"]
+    return [f"{INDENT4}{ctype} {name};"]
 
 
 def _canopennode_h_lines(od: ObjectDictionary, index: int) -> list[str]:
