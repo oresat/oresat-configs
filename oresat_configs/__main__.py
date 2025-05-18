@@ -41,12 +41,10 @@ def main() -> None:
     subparser = subparsers.add_parser(
         "canopennode", help="generate files for an canopennode project"
     )
-    subparser.add_argument("base_od_config", help="base od config file for the node")
     subparser.add_argument(
-        "common_od_config",
-        nargs="?",
-        default="",
-        help="optional common od config file path",
+        "od_configs",
+        nargs="+",
+        help="common and card od config file paths",
     )
     subparser.add_argument(
         "-d",
@@ -95,7 +93,7 @@ def main() -> None:
     elif args.subcommand == "cand-manager":
         gen_cand_manager_files(args.cards_config, args.mission_configs, args.dir_path)
     elif args.subcommand == "canopennode":
-        gen_canopennode_files(args.base_od_config, args.common_od_config, args.dir_path)
+        gen_canopennode_files(args.od_configs, args.dir_path)
     elif args.subcommand == "dbc":
         gen_dbc(args.cards_config)
     elif args.subcommand == "dbc-node":

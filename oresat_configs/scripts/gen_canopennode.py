@@ -497,20 +497,11 @@ def _make_bitfields_lines(obj: Variable) -> list[str]:
     return lines
 
 
-def gen_canopennode_files(
-    card_od_config_path: str | Path, common_od_config_path: str | Path, dir_path: str | Path
-) -> None:
-    if isinstance(card_od_config_path, str):
-        card_od_config_path = Path(card_od_config_path)
-    if isinstance(common_od_config_path, str):
-        common_od_config_path = Path(common_od_config_path)
+def gen_canopennode_files(od_config_paths: list[str | Path], dir_path: str | Path) -> None:
+    if len(od_config_paths) not in [1, 2]:
+        raise ValueError("od_config_paths must be 1 or 2 paths")
     if isinstance(dir_path, str):
         dir_path = Path(dir_path)
-
-    card_od_config = OdConfig.from_yaml(card_od_config_path)
-    if common_od_config_path.exists():
-        common_od_config = OdConfig.from_yaml(common_od_config_path)
-        od = gen_od([card_od_config, common_od_config])
-    else:
-        od = gen_od([card_od_config])
+    od_configs = [OdConfig.from_yaml(p) for p in od_config_paths]
+    od = gen_od(od_configs)
     write_canopennode(od, dir_path)
