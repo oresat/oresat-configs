@@ -23,7 +23,6 @@ dependencies = [
     "canopen",
     "dacite",
     "pyyaml",
-    "tabulate",
     "requests"
 ]
 dynamic = ["version"]
@@ -44,3 +43,13 @@ write_to = "oresat_configs/_version.py"
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D",        # don't require docstrings
+    "DOC",      # don't require docstrings
+    "TID252",   # allow relative imports
+    "COM812",   # don't require trailing commas (suppresses ruff warning)
+    "TRY003",   # allow "long" message in exceptions
+]

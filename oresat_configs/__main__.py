@@ -9,8 +9,8 @@ from .scripts.gen_kaitai import gen_kaitai
 from .scripts.gen_xtce import gen_xtce
 
 
-def main():
-    parser = argparse.ArgumentParser(prog="oresat_configs")
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="oresat-configs")
     parser.add_argument("--version", action="version", version="%(prog)s v" + __version__)
 
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -22,7 +22,7 @@ def main():
         "--dir-path",
         metavar="PATH",
         default=".",
-        help="output directory path. default %(default)s",
+        help="output directory path (default: %(default)s)",
     )
 
     subparser = subparsers.add_parser(
@@ -35,7 +35,7 @@ def main():
         "--dir-path",
         metavar="PATH",
         default=".",
-        help="output directory path. default %(default)s",
+        help="output directory path (default: %(default)s)",
     )
 
     subparser = subparsers.add_parser(
@@ -53,7 +53,7 @@ def main():
         "--dir-path",
         metavar="PATH",
         default=".",
-        help="output directory path. default %(default)s",
+        help="output directory path (default: %(default)s)",
     )
 
     subparser = subparsers.add_parser(
@@ -78,7 +78,7 @@ def main():
         "--node-id",
         type=hex_int,
         default="0x7C",
-        help="node id for the node %(default)s",
+        help="node id for the node (default: %(default)s)",
     )
 
     subparser = subparsers.add_parser("kaitai", help="generate kaitai file(s) for satnogs")
@@ -90,7 +90,6 @@ def main():
     subparser.add_argument("mission_configs", nargs="+", help="paths to mission config(s)")
 
     args = parser.parse_args()
-
     if args.subcommand == "cand":
         gen_cand_files(args.od_config, args.dir_path)
     elif args.subcommand == "cand-manager":

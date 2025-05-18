@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
+import yaml
 from dacite import from_dict
-from yaml import CLoader, load
 
 
 @dataclass
@@ -30,18 +30,18 @@ class ConfigObject:
     """Description of the object."""
     value_descriptions: dict[str, int] = field(default_factory=dict)
     """Optional: Can be used to define enum values for an unsigned integer data types."""
-    bit_definitions: dict[str, Union[int, str]] = field(default_factory=dict)
+    bit_definitions: dict[str, int | str] = field(default_factory=dict)
     """Optional: Can be used to define bitfield of an unsigned integer data types."""
     unit: str = ""
     """Optional engineering unit for the object."""
     scale_factor: float = 1
     """Can be used to scale a raw integer value to a engineering (float) value."""
-    low_limit: Optional[int] = None
+    low_limit: int | None = None
     """
     The lower raw limit for value. No need to set this if it limit is the lower limit of the data
     type.
     """
-    high_limit: Optional[int] = None
+    high_limit: int | None = None
     """
     The higher raw limit for value. No need to set this if it limit is the higher limit of the data
     type.
@@ -106,7 +106,7 @@ class GenerateSubindex(ConfigObject):
 
     name: str = ""
     """Names of objects to generate."""
-    subindexes: Union[str, int] = 0
+    subindexes: str | int = 0
     """Subindexes of objects to generate."""
 
 
@@ -160,7 +160,7 @@ class IndexObject(ConfigObject):
     """Object type; must be ``"variable"``, ``"array"``, or ``"record"``."""
     subindexes: list[SubindexObject] = field(default_factory=list)
     """Defines subindexes for records and arrays."""
-    generate_subindexes: Optional[GenerateSubindex] = None
+    generate_subindexes: GenerateSubindex | None = None
     """Used to generate subindexes for arrays."""
 
 
@@ -273,10 +273,9 @@ class OdConfig:
 
     @classmethod
     @cache
-    def from_yaml(cls, config_path: Union[str, Path]) -> OdConfig:
-        """Load a card YAML config file."""
+    def from_yaml(cls, config_path: str | Path) -> OdConfig:
         if isinstance(config_path, str):
             config_path = Path(config_path)
         with config_path.open() as f:
-            config_raw = load(f, Loader=CLoader)
+            config_raw = yaml.safe_load(f)
         return from_dict(data_class=cls, data=config_raw)

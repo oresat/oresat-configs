@@ -1,27 +1,50 @@
+from __future__ import annotations
+
 import os
-from typing import Optional
+from pathlib import Path
 
 from canopen.objectdictionary import Array, ObjectDictionary, Variable
 
-from .._yaml_to_od import DataType, gen_od, load_od_configs, load_od_db
+from .._yaml_to_od import (
+    TPDO_COMM_START,
+    TPDO_PARA_START,
+    DataType,
+    gen_od,
+    load_od_configs,
+    load_od_db,
+)
 from ..configs.cards_config import CardInfo, CardsConfig
 from ..configs.mission_config import MissionConfig, pack_beacon_header
 from ..configs.od_config import OdConfig
-from . import INDENT4, INDENT8, INDENT12, INDENT16, __version__, snake_to_camel
+from . import (
+    INDENT4,
+    INDENT8,
+    INDENT12,
+    INDENT16,
+    OTHER_STD_OBJS_START,
+    RPDO_OBJS_START,
+    __version__,
+    snake_to_camel,
+)
 from .gen_cand import make_bitfield_lines, make_enum_lines, write_cand_od
 
 
 def write_cand_manager_od(
     name: str,
     od: ObjectDictionary,
-    cards_config: Optional[CardsConfig],
+    cards_config: CardsConfig,
     common_od_configs: dict[str, OdConfig],
-    dir_path: str = ".",
-):
+    dir_path: Path | str | None = None,
+) -> None:
     tpdos = []
     enums = {}
     bitfields = {}
     entries = {}
+
+    if dir_path is None:
+        dir_path = Path().cwd()
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
 
     imports = {card.base: [] for card in cards_config.cards}
     for i in common_od_configs:
@@ -30,11 +53,11 @@ def write_cand_manager_od(
     common_indexes = []
     for c_name, common_od_config in common_od_configs.items():
         for obj in common_od_config.objects:
+            obj_name = f"{c_name}_{obj.name}"
             if isinstance(obj.subindexes, list) and obj.subindexes:
-                for sub_obj in obj.subindexes:
-                    common_indexes.append(f"{c_name}_{obj.name}_{sub_obj.name}")
+                common_indexes.extend([f"{obj_name}_{sub_obj.name}" for sub_obj in obj.subindexes])
             else:
-                common_indexes.append(f"{c_name}_{obj.name}")
+                common_indexes.append(obj_name)
 
     def get_card(obj_name: str) -> CardInfo:
         for card in cards_config.cards:
@@ -45,17 +68,17 @@ def write_cand_manager_od(
     for index in sorted(od.indices):
         obj = od[index]
 
-        if 0x1800 <= index < 0x1A00:
-            tpdos.append(index - 0x1800)
+        if TPDO_COMM_START <= index < TPDO_PARA_START:
+            tpdos.append(index - TPDO_COMM_START)
 
-        if index < 0x2000:
+        if index < OTHER_STD_OBJS_START:
             continue
 
         if isinstance(obj, Variable):
             obj_name = obj.name
             entries[obj_name] = obj
 
-            if obj.index < 0x5000:
+            if obj.index < RPDO_OBJS_START:
                 obj_name = f"{name}_{obj.name}"
                 if obj.value_descriptions:
                     enums[obj_name] = obj.value_descriptions
@@ -78,7 +101,7 @@ def write_cand_manager_od(
                         imports[card.base].append(obj_name + "_bit_field")
         elif isinstance(obj, Array):
             sub1 = list(obj.subindices.values())[1]
-            if obj.index < 0x5000:
+            if obj.index < RPDO_OBJS_START:
                 obj_name = f"{name}_{obj.name}"
                 if sub1.value_descriptions:
                     enums[obj_name] = sub1.value_descriptions
@@ -113,7 +136,7 @@ def write_cand_manager_od(
                 obj_name = f"{obj.name}_{sub_obj.name}"
                 entries[obj_name] = sub_obj
 
-                if obj.index < 0x5000:
+                if obj.index < RPDO_OBJS_START:
                     obj_name = f"{name}_{obj_name}"
                     if sub_obj.value_descriptions:
                         enums[obj_name] = sub_obj.value_descriptions
@@ -167,7 +190,7 @@ def write_cand_manager_od(
         dt = DataType(obj.data_type)
 
         class_name = obj.parent.name if isinstance(obj.parent, Array) else entry_name
-        if obj.index < 0x5000:
+        if obj.index < RPDO_OBJS_START:
             class_name = snake_to_camel(f"{name}_{class_name}")
         else:
             card = get_card(class_name)
@@ -213,8 +236,11 @@ def write_cand_mission_defs(
     node_name: str,
     mission_configs: list[MissionConfig],
     cards_config: CardsConfig,
-    dir_path: str,
-):
+    dir_path: str | Path,
+) -> None:
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     node_name_camel = snake_to_camel(node_name)
     mission_lines = [
         "from enum import Enum\n",
@@ -243,10 +269,9 @@ def write_cand_mission_defs(
         "\n\n",
     ]
 
-    os.makedirs(dir_path, exist_ok=True)
-    mission_path = os.path.join(dir_path, "missions")
-    if not os.path.isdir(mission_path):
-        os.makedirs(mission_path, exist_ok=True)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    mission_path = dir_path / "missions"
+    mission_path.mkdir(parents=True, exist_ok=True)
 
     mission_lines.append("class Mission(MissionDef, Enum):\n")
     for mission_config in mission_configs:
@@ -265,8 +290,8 @@ def write_cand_mission_defs(
         f"{INDENT16}return m\n",
         f"{INDENT8}raise ValueError('invald mission id')\n",
     ]
-    output_file = os.path.join(mission_path, "__init__.py")
-    with open(output_file, "w") as f:
+    output_file = mission_path / "__init__.py"
+    with output_file.open("w") as f:
         f.writelines(mission_lines)
 
     manager_name = cards_config.manager.name
@@ -293,12 +318,15 @@ def write_cand_mission_defs(
             mission_lines.append(f"{INDENT4}{node_name_camel}Entry.{'_'.join(names).upper()},\n")
         mission_lines.append("]\n")
 
-        output_file = os.path.join(mission_path, f"{mission_config.name}.py")
-        with open(output_file, "w") as f:
+        output_file = mission_path / f"{mission_config.name}.py"
+        with output_file.open("w") as f:
             f.writelines(mission_lines)
 
 
-def write_cand_fram_def(card: CardInfo, fram_def: list[Variable], dir_path: str):
+def write_cand_fram_def(card: CardInfo, fram_def: list[list[str]], dir_path: str | Path) -> None:
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     node_name_camel = snake_to_camel(card.name)
     fram_lines = [
         f"from .{card.name}_od import {node_name_camel}Entry\n",
@@ -308,13 +336,16 @@ def write_cand_fram_def(card: CardInfo, fram_def: list[Variable], dir_path: str)
         fram_lines.append(f"    {node_name_camel}Entry.{'_'.join(names).upper()},\n")
     fram_lines.append("]")
 
-    os.makedirs(dir_path, exist_ok=True)
-    output_file = os.path.join(dir_path, "fram.py")
-    with open(output_file, "w") as f:
+    dir_path.mkdir(parents=True, exist_ok=True)
+    output_file = dir_path / "fram.py"
+    with output_file.open("w") as f:
         f.writelines(fram_lines)
 
 
-def write_cand_nodes(cards_config: CardsConfig, dir_path: str):
+def write_cand_nodes(cards_config: CardsConfig, dir_path: Path | str) -> None:
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     lines = [
         "from dataclasses import dataclass\n",
         "from enum import Enum, auto\n",
@@ -356,14 +387,19 @@ def write_cand_nodes(cards_config: CardsConfig, dir_path: str):
             line += f", {card.child.upper()}"
         lines.append(line + "\n")
 
-    os.makedirs(dir_path, exist_ok=True)
-    output_file = os.path.join(dir_path, "nodes.py")
-    with open(output_file, "w") as f:
+    dir_path.mkdir(parents=True, exist_ok=True)
+    output_file = dir_path / "nodes.py"
+    with output_file.open("w") as f:
         f.writelines(lines)
 
 
-def write_cand_od_all(cards_config: CardsConfig, od_configs: dict[str, OdConfig], dir_path: str):
-    os.makedirs(dir_path, exist_ok=True)
+def write_cand_od_all(
+    cards_config: CardsConfig, od_configs: dict[str, OdConfig], dir_path: Path | str
+) -> None:
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
+    dir_path.mkdir(parents=True, exist_ok=True)
     for name, od_config in od_configs.items():
         od = gen_od([od_config])
         write_cand_od(name, od, dir_path, add_tpdos=False)
@@ -383,15 +419,24 @@ def write_cand_od_all(cards_config: CardsConfig, od_configs: dict[str, OdConfig]
     )
 
 
-def gen_cand_manager_files(cards_config_path: str, mission_config_paths: list[str], dir_path: str):
+def gen_cand_manager_files(
+    cards_config_path: Path | str,
+    mission_config_paths: list[Path] | list[str],
+    dir_path: Path | str,
+) -> None:
+    if isinstance(cards_config_path, str):
+        cards_config_path = Path(cards_config_path)
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     cards_config = CardsConfig.from_yaml(cards_config_path)
     mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
-    config_dir = os.path.dirname(cards_config_path)
+    config_dir = cards_config_path.parent
 
-    os.makedirs(dir_path, exist_ok=True)
-    init_file = os.path.join(dir_path, "__init__.py")
-    if not os.path.isfile(init_file):
-        open(init_file, "w").close()
+    dir_path.mkdir(parents=True, exist_ok=True)
+    init_file = dir_path / "__init__.py"
+    if not init_file.exists():
+        init_file.touch()
 
     od_configs = load_od_configs(cards_config, config_dir)
     write_cand_od_all(cards_config, od_configs, dir_path)

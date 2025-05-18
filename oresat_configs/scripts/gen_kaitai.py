@@ -1,31 +1,39 @@
-import os
-from typing import Any, Union
+from __future__ import annotations
 
-import canopen
+from pathlib import Path
+from typing import Any
+
 from canopen.objectdictionary import Array, ObjectDictionary, Record
 from yaml import dump
 
-from .._yaml_to_od import get_beacon_def, load_od_configs, load_od_db
+from .._yaml_to_od import DataType, get_beacon_def, load_od_configs, load_od_db
 from ..configs.cards_config import CardsConfig
 from ..configs.mission_config import MissionConfig
 
 CANOPEN_TO_KAITAI_DT = {
-    canopen.objectdictionary.BOOLEAN: "b1",
-    canopen.objectdictionary.INTEGER8: "s1",
-    canopen.objectdictionary.INTEGER16: "s2",
-    canopen.objectdictionary.INTEGER32: "s4",
-    canopen.objectdictionary.INTEGER64: "s8",
-    canopen.objectdictionary.UNSIGNED8: "u1",
-    canopen.objectdictionary.UNSIGNED16: "u2",
-    canopen.objectdictionary.UNSIGNED32: "u4",
-    canopen.objectdictionary.UNSIGNED64: "u8",
-    canopen.objectdictionary.VISIBLE_STRING: "str",
-    canopen.objectdictionary.REAL32: "f4",
-    canopen.objectdictionary.REAL64: "f8",
+    DataType.BOOL: "b1",
+    DataType.INT8: "s1",
+    DataType.INT16: "s2",
+    DataType.INT32: "s4",
+    DataType.INT64: "s8",
+    DataType.UINT8: "u1",
+    DataType.UINT16: "u2",
+    DataType.UINT32: "u4",
+    DataType.UINT64: "u8",
+    DataType.STR: "str",
+    DataType.FLOAT32: "f4",
+    DataType.FLOAT64: "f8",
 }
 
 
-def write_kaitai(mission_config: MissionConfig, od: ObjectDictionary, dir_path: str = ".") -> None:
+def write_kaitai(
+    mission_config: MissionConfig, od: ObjectDictionary, dir_path: str | Path | None = None
+) -> None:
+    if dir_path is None:
+        dir_path = Path().cwd()
+    elif isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     #  Setup pre-determined canned types
     kaitai_data: Any = {
         "meta": {
@@ -172,14 +180,12 @@ def write_kaitai(mission_config: MissionConfig, od: ObjectDictionary, dir_path: 
 
     for obj in beacon_def:
         name = (
-            "_".join([obj.parent.name, obj.name])
-            if isinstance(obj.parent, (Record, Array))
-            else obj.name
+            f"{obj.parent.name}_{obj.name}" if isinstance(obj.parent, (Record, Array)) else obj.name
         )
 
         new_var = {
             "id": name,
-            "type": CANOPEN_TO_KAITAI_DT[obj.data_type],
+            "type": CANOPEN_TO_KAITAI_DT[DataType(obj.data_type)],
             "doc": obj.description,
         }
         if new_var["type"] == "str":
@@ -196,17 +202,23 @@ def write_kaitai(mission_config: MissionConfig, od: ObjectDictionary, dir_path: 
     kaitai_data["types"]["i_frame"]["seq"][1]["size"] = payload_size
     kaitai_data["types"]["ui_frame"]["seq"][1]["size"] = payload_size
 
-    # Write kaitai to output file
-    with open(f"{dir_path}/{mission_config.name}.ksy", "w+") as file:
-        dump(kaitai_data, file)
+    file_path = dir_path / f"{mission_config.name}.ksy"
+    with file_path.open("w+") as f:
+        dump(kaitai_data, f)
 
 
-def gen_kaitai(cards_config_path: str, mission_config_paths: Union[str, list[str]]):
+def gen_kaitai(
+    cards_config_path: str | Path, mission_config_paths: str | Path | list[str | Path]
+) -> None:
+    if isinstance(cards_config_path, str):
+        cards_config_path = Path(cards_config_path)
     cards_config = CardsConfig.from_yaml(cards_config_path)
-    if isinstance(mission_config_paths, str):
+
+    if isinstance(mission_config_paths, (str, Path)):
         mission_config_paths = [mission_config_paths]
     mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
-    config_dir = os.path.dirname(cards_config_path)
+
+    config_dir = cards_config_path.parent
     od_configs = load_od_configs(cards_config, config_dir)
     od_db = load_od_db(cards_config, od_configs)
     for mission_config in mission_configs:

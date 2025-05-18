@@ -1,35 +1,41 @@
-import os
+from __future__ import annotations
+
+from pathlib import Path
 
 import bitstring
-import canopen
 from canopen.objectdictionary import ObjectDictionary
 
-from .._yaml_to_od import get_beacon_def, load_od_configs, load_od_db
+from oresat_configs.scripts import RPDO_OBJS_START
+
+from .._yaml_to_od import DataType, get_beacon_def, load_od_configs, load_od_db
 from ..configs.cards_config import CardsConfig
 from ..configs.mission_config import MissionConfig
 
 OD_DATA_TYPES = {
-    canopen.objectdictionary.BOOLEAN: "bool",
-    canopen.objectdictionary.INTEGER8: "int8",
-    canopen.objectdictionary.INTEGER16: "int16",
-    canopen.objectdictionary.INTEGER32: "int32",
-    canopen.objectdictionary.INTEGER64: "int64",
-    canopen.objectdictionary.UNSIGNED8: "uint8",
-    canopen.objectdictionary.UNSIGNED16: "uint16",
-    canopen.objectdictionary.UNSIGNED32: "uint32",
-    canopen.objectdictionary.UNSIGNED64: "uint64",
-    canopen.objectdictionary.REAL32: "float32",
-    canopen.objectdictionary.REAL64: "float64",
-    canopen.objectdictionary.VISIBLE_STRING: "str",
-    canopen.objectdictionary.OCTET_STRING: "octet_str",
-    canopen.objectdictionary.DOMAIN: "domain",
+    DataType.BOOL: "bool",
+    DataType.INT8: "int8",
+    DataType.INT16: "int16",
+    DataType.INT32: "int32",
+    DataType.INT64: "int64",
+    DataType.UINT8: "uint8",
+    DataType.UINT16: "uint16",
+    DataType.UINT32: "uint32",
+    DataType.UINT64: "uint64",
+    DataType.FLOAT32: "float32",
+    DataType.FLOAT64: "float64",
+    DataType.STR: "str",
+    DataType.OCTET_STR: "octet_str",
+    DataType.DOMAIN: "domain",
 }
 """Nice names for CANopen data types."""
 
 
 def write_beacon_rst_files(
-    manager: str, mission_config: list[MissionConfig], od: ObjectDictionary, dir_path: str
-):
+    manager: str, mission_config: MissionConfig, od: ObjectDictionary, dir_path: str | Path
+) -> None:
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     title = f"{mission_config.nice_name} Beacon Definition"
     header_title = "AX.25 Header"
     lines = [
@@ -167,7 +173,7 @@ def write_beacon_rst_files(
             index_name = obj.parent.name
             subindex_name = obj.name
 
-        if obj.index < 0x5000:
+        if obj.index < RPDO_OBJS_START:
             card = f"{manager}"
             name = index_name
             name += "_" + subindex_name if subindex_name else ""
@@ -175,12 +181,12 @@ def write_beacon_rst_files(
             card = index_name
             name = subindex_name
 
-        if obj.data_type == canopen.objectdictionary.VISIBLE_STRING:
+        if obj.data_type == DataType.STR.value:
             size = len(obj.default)
         else:
             size = len(obj.encode_raw(obj.default))
 
-        data_type = OD_DATA_TYPES[obj.data_type]
+        data_type = OD_DATA_TYPES[DataType(obj.data_type)]
         desc = "\n" + obj.description + "\n"
         if obj.name in ["start_chars", "revision"]:
             desc += f": {obj.value}\n"
@@ -210,24 +216,30 @@ def write_beacon_rst_files(
     lines.append("\n")
     lines.append(f"Total packet length: {offset} octets\n")
 
-    file_path = os.path.join(dir_path, f"{mission_config.name}_beacon.rst")
-    dir_path = os.path.dirname(file_path)
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
-
-    with open(file_path, "w") as f:
+    dir_path.mkdir(parents=True, exist_ok=True)
+    file_path = dir_path / f"{mission_config.name}_beacon.rst"
+    with file_path.open("w") as f:
         f.writelines(lines)
 
 
-def gen_rst_manager_files(cards_config_path: str, mission_config_paths: list[str], dir_path: str):
+def gen_rst_manager_files(
+    cards_config_path: str | Path,
+    mission_config_paths: list[str] | list[Path],
+    dir_path: str | Path,
+) -> None:
+    if isinstance(cards_config_path, str):
+        cards_config_path = Path(cards_config_path)
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     cards_config = CardsConfig.from_yaml(cards_config_path)
     mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
-    config_dir = os.path.dirname(cards_config_path)
+    config_dir = cards_config_path.parent
 
     od_configs = load_od_configs(cards_config, config_dir)
     od_db = load_od_db(cards_config, od_configs)
 
-    os.makedirs(dir_path, exist_ok=True)
+    dir_path.mkdir(parents=True, exist_ok=True)
 
     manager_name = cards_config.manager.name
     for mission_config in mission_configs:

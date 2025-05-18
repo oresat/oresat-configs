@@ -1,13 +1,14 @@
+from __future__ import annotations
+
 import json
-import os
+import logging
 from copy import deepcopy
-from enum import Enum
+from enum import Enum, unique
+from pathlib import Path
 from typing import Any, Union
 
-import canopen
 import requests
-from canopen import ObjectDictionary
-from canopen.objectdictionary import Array, Record, Variable
+from canopen.objectdictionary import Array, ObjectDictionary, Record, Variable
 
 from .configs.cards_config import CardsConfig
 from .configs.mission_config import MissionConfig
@@ -15,12 +16,15 @@ from .configs.od_config import (ConfigObject, GenerateSubindex, IndexObject,
                                 OdConfig, SubindexObject)
 from .std_objs import STD_OBJS
 
+logger = logging.getLogger(__name__)
+
 RPDO_COMM_START = 0x1400
 RPDO_PARA_START = 0x1600
 TPDO_COMM_START = 0x1800
 TPDO_PARA_START = 0x1A00
 
 
+@unique
 class DataType(Enum):
     BOOL = 0x1
     INT8 = 0x2
@@ -32,10 +36,19 @@ class DataType(Enum):
     FLOAT32 = 0x8
     STR = 0x9
     OCTET_STR = 0xA
+    UNICODE_STR = 0xB
     DOMAIN = 0xF
     FLOAT64 = 0x11
     INT64 = 0x15
     UINT64 = 0x1B
+
+    @property
+    def is_int(self) -> bool:
+        return self.name.startswith("INT") or self.name.startswith("UINT")
+
+    @property
+    def is_float(self) -> bool:
+        return self.name.startswith("FLOAT")
 
     @property
     def size(self) -> int:
@@ -55,13 +68,13 @@ class DataType(Enum):
         return self.size == 0
 
     @property
-    def default(self) -> Any:
+    def default(self) -> bool | int | float | str | bytes | None:
         default: Any = 0
         if self.name == "BOOL":
             default = False
         elif self.name.startswith("FLOAT"):
             default = 0.0
-        elif self.name == "STR":
+        elif self.name in ["STR", "UNICODE_STR"]:
             default = ""
         elif self.name == "OCTET_STR":
             default = b"\x00"
@@ -78,14 +91,12 @@ def _set_var_default(obj: ConfigObject, var: Variable) -> None:
         default = b"\x00" * obj.str_length
     elif default is None:
         default = DataType(var.data_type).default
-    elif var.data_type in canopen.objectdictionary.INTEGER_TYPES and isinstance(default, str):
+    elif DataType(var.data_type).is_int and isinstance(default, str):
         default = int(default, 16) if default.startswith("0x") else int(default)
     var.default = default
 
 
-def _parse_bit_definitions(
-    obj: Union[IndexObject, SubindexObject, GenerateSubindex],
-) -> dict[str, list[int]]:
+def _parse_bit_definitions(obj: IndexObject | SubindexObject | GenerateSubindex) -> dict[str, list[int]]:
     bit_defs = {}
     for name, bits in obj.bit_definitions.items():
         if isinstance(bits, int):
@@ -98,7 +109,7 @@ def _parse_bit_definitions(
     return bit_defs
 
 
-def _make_var(obj: Union[IndexObject, SubindexObject], index: int, subindex: int = 0) -> Variable:
+def _make_var(obj: IndexObject | SubindexObject, index: int, subindex: int = 0) -> Variable:
     var = Variable(obj.name, index, subindex)
     var.access_type = obj.access_type
     var.description = obj.description
@@ -548,17 +559,17 @@ def set_od_node_id(od: ObjectDictionary, node_id: int):
             od[index][cob_id_sub].value += node_id
 
 
-def load_od_configs(cards_config: CardsConfig, config_dir: str, force_download: bool = False) -> dict[str, OdConfig]:
-    cache_dir = os.path.expanduser("~/.cache/oresat-configs")
-    data_json_path = os.path.join(cache_dir, "data.json")
+def load_od_configs(cards_config: CardsConfig, config_dir: Path, force_download: bool = False) -> dict[str, OdConfig]:
+    cache_dir = Path("~/.cache/oresat-configs").expanduser()
+    data_json_path = cache_dir / "data.json"
 
-    if not os.path.isdir(cache_dir):
-        os.makedirs(cache_dir)
+    if not cache_dir.is_dir():
+        cache_dir.mkdir(parents=True)
 
     data = {}
-    if not force_download and os.path.isfile(data_json_path):
+    if not force_download and data_json_path.is_file():
         try:
-            with open(data_json_path, "r") as f:
+            with data_json_path.open("r") as f:
                 data = json.load(f)
         except json.decoder.JSONDecodeError:
             pass
@@ -566,19 +577,19 @@ def load_od_configs(cards_config: CardsConfig, config_dir: str, force_download: 
     od_configs = {}
     for config_info in cards_config.configs:
         if config_info.od_source.startswith("http"):
-            config_path = os.path.join(cache_dir, f"{config_info.name}.yaml")
-            if config_info.od_source != data.get(config_info.name, "") or not os.path.isfile(config_path):
-                print(f"downloading {config_info.od_source}")
+            config_path = cache_dir / f"{config_info.name}.yaml"
+            if config_info.od_source != data.get(config_info.name, "") or not config_path.is_file():
+                logger.info("downloading %s", config_info.od_source)
                 r = requests.get(config_info.od_source, timeout=1)
-                with open(config_path, "w") as f:
+                with config_path.open("w") as f:
                     f.write(r.text)
         else:
-            config_path = os.path.join(config_dir, config_info.od_source)
+            config_path = config_dir / config_info.od_source
 
         data[config_info.name] = config_info.od_source
         od_configs[config_info.name] = OdConfig.from_yaml(config_path)
 
-    with open(data_json_path, "w") as f:
+    with data_json_path.open("w") as f:
         json.dump(data, f, indent=4)
 
     return od_configs

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
 
 import bitstring
+import yaml
 from dacite import from_dict
-from yaml import CLoader, load
 
 AX25_CALLSIGN_LEN = 6
 AX25_HEADER_LEN = 16
@@ -93,11 +92,11 @@ class MissionConfig:
     beacon: BeaconConfig
 
     @classmethod
-    def from_yaml(cls, config_path: Union[str, Path]) -> MissionConfig:
+    def from_yaml(cls, config_path: str | Path) -> MissionConfig:
         if isinstance(config_path, str):
             config_path = Path(config_path)
         with config_path.open() as f:
-            config_raw = load(f, Loader=CLoader)
+            config_raw = yaml.safe_load(f)
         return from_dict(data_class=cls, data=config_raw)
 
 

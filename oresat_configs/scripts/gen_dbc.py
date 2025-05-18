@@ -1,4 +1,6 @@
-import os
+from __future__ import annotations
+
+from pathlib import Path
 
 from canopen.objectdictionary import REAL32, REAL64, UNSIGNED_TYPES, ObjectDictionary, Variable
 
@@ -7,6 +9,8 @@ from .._yaml_to_od import gen_od, load_od_configs, load_od_db, set_od_node_id
 from ..configs.cards_config import CardsConfig
 from ..configs.od_config import OdConfig
 from . import INDENT3, INDENT4
+
+DEFAULT_NODE_ID = 0x7C
 
 VECTOR = "Vector__XXX"  # flag for default, any, all devices
 
@@ -116,8 +120,6 @@ TPDO_MAP_INDEX_START = 0x1A00
 
 
 def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECTOR):
-    file_name = f"{name}.dbc"
-
     lines: list[str] = [
         f'VERSION "{__version__}"',
         "",
@@ -177,13 +179,13 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
     signal_comments: list[tuple[int, str, str]] = []
     node_comments: list[tuple[int, str]] = []
     floats: list[tuple[int, str, int]] = []
-    for name, od in od_db.items():
-        node_comments.append((od.node_id, name))
-        consumer = manager if name != manager else VECTOR
+    for node_name, od in od_db.items():
+        node_comments.append((od.node_id, node_name))
+        consumer = manager if node_name != manager else VECTOR
 
         # EMCYs
         cob_id = 0x80 + od.node_id
-        lines.append(f"BO_ {cob_id} {name}_emcy: 8 {name}")
+        lines.append(f"BO_ {cob_id} {node_name}_emcy: 8 {node_name}")
         lines.append(f'{INDENT3}SG_ emcy_error_code : 0|16@1+ (1,0) [0|0] "" {consumer}')
         lines.append(f'{INDENT3}SG_ error_reg_generic : 16|1@1+ (1,0) [0|0] "" {consumer}')
         lines.append(f'{INDENT3}SG_ error_reg_current : 17|1@1+ (1,0) [0|0] "" {consumer}')
@@ -204,11 +206,11 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
                 pdo = "rpdo"
                 comms_index_start = RPDO_COMMS_INDEX_START
                 pdo_producer = consumer
-                pdo_consumer = name
+                pdo_consumer = node_name
             elif param_index >= TPDO_COMMS_INDEX_START and param_index < TPDO_MAP_INDEX_START:
                 pdo = "tpdo"
                 comms_index_start = TPDO_COMMS_INDEX_START
-                pdo_producer = name
+                pdo_producer = node_name
                 pdo_consumer = consumer
             else:
                 continue
@@ -219,7 +221,7 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
             cob_id = od[param_index][1].value & 0x7FF
             sb = 0
 
-            pdos = 12 if name == manager else 16
+            pdos = 12 if node_name == manager else 16
             if cob_id & 0x7F not in [od.node_id + i for i in range(pdos // 4)]:
                 continue  # PDO for another node
 
@@ -271,15 +273,15 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
                     enums.append((cob_id, signal, obj.value_descriptions))
 
             size = sb // 8
-            lines.append(f"BO_ {cob_id} {name}_{pdo}_{num}: {size} {pdo_producer}")
+            lines.append(f"BO_ {cob_id} {node_name}_{pdo}_{num}: {size} {pdo_producer}")
             lines += pdo_lines
             lines.append("")
 
         # SDOs (useless for block SDO transfers)
-        if name != manager:
+        if node_name != manager:
             # client / tx
             cob_id = 0x580 + od.node_id
-            lines.append(f"BO_ {cob_id} {name}_sdo_tx: 8 {name}")
+            lines.append(f"BO_ {cob_id} {node_name}_sdo_tx: 8 {node_name}")
             lines.append(f'{INDENT3}SG_ ccs M : 5|3@1+ (1,0) [0|0] "" {consumer}')  # multiplexor
             # ccs = 0
             lines.append(f'{INDENT3}SG_ more_segments m0 : 0|1@1+ (1,0) [0|0] "" {consumer}')
@@ -309,7 +311,7 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
 
             # server / rx
             cob_id = 0x600 + od.node_id
-            lines.append(f"BO_ {cob_id} {name}_sdo_rx: 8 {name}")
+            lines.append(f"BO_ {cob_id} {node_name}_sdo_rx: 8 {node_name}")
             lines.append(f'{INDENT3}SG_ scs M : 5|3@1+ (1,0) [0|0] "" {consumer}')  # multiplexor
             # scs = 0
             lines.append(f'{INDENT3}SG_ toggle_bit m0 : 4|1@1+ (1,0) [0|0] "" {consumer}')
@@ -339,7 +341,7 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
 
         # heartbeats
         cob_id = 0x700 + od.node_id
-        lines.append(f"BO_ {cob_id} {name}_heartbeat: 1 {name}")
+        lines.append(f"BO_ {cob_id} {node_name}_heartbeat: 1 {node_name}")
         lines.append(f'{INDENT3}SG_ state : 0|7@1+ (1,0) [0|0] "" {consumer}')  # bit 7 is reserved
         enums.append((cob_id, "state", HB_STATES))
         lines.append("")
@@ -365,14 +367,23 @@ def write_dbc(name: str, od_db: dict[str, ObjectDictionary], manager: str = VECT
     for cob_id, signal, value in floats:
         lines.append(f"SIG_VALTYPE_ {cob_id} {signal} : {value};")
 
-    with open(file_name, "w") as f:
+    with Path(f"{name}.dbc").open("w") as f:
         for line in lines:
             f.write(line + "\n")
 
 
-def gen_dbc_node(card_od_config_path: str, common_od_config_path: str = "", node_id: int = 0x7C):
+def gen_dbc_node(
+    card_od_config_path: str | Path,
+    common_od_config_path: str | Path | None = None,
+    node_id: int = DEFAULT_NODE_ID,
+) -> None:
+    if isinstance(card_od_config_path, str):
+        card_od_config_path = Path(card_od_config_path)
+    if isinstance(common_od_config_path, str):
+        common_od_config_path = Path(common_od_config_path)
+
     card_od_config = OdConfig.from_yaml(card_od_config_path)
-    if common_od_config_path:
+    if common_od_config_path is not None:
         common_od_config = OdConfig.from_yaml(common_od_config_path)
         od = gen_od([card_od_config, common_od_config])
     else:
@@ -381,9 +392,12 @@ def gen_dbc_node(card_od_config_path: str, common_od_config_path: str = "", node
     write_dbc(card_od_config.name, {card_od_config.name: od})
 
 
-def gen_dbc(cards_config_path: str):
+def gen_dbc(cards_config_path: str | Path) -> None:
+    if isinstance(cards_config_path, str):
+        cards_config_path = Path(cards_config_path)
+
     cards_config = CardsConfig.from_yaml(cards_config_path)
-    config_dir = os.path.dirname(cards_config_path)
+    config_dir = cards_config_path.parent
     od_configs = load_od_configs(cards_config, config_dir)
     od_db = load_od_db(cards_config, od_configs)
     write_dbc("oresat", od_db, cards_config.manager.name)

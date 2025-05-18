@@ -1,54 +1,39 @@
-import os
+from __future__ import annotations
+
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from typing import Union
+from pathlib import Path
 
-import canopen
-from canopen import ObjectDictionary
+from canopen.objectdictionary import ObjectDictionary, Variable
 
-from .._yaml_to_od import get_beacon_def, load_od_configs, load_od_db
+from .._yaml_to_od import DataType, get_beacon_def, load_od_configs, load_od_db
 from ..configs.cards_config import CardsConfig
 from ..configs.mission_config import MissionConfig
 
 CANOPEN_TO_XTCE_DT = {
-    canopen.objectdictionary.BOOLEAN: "bool",
-    canopen.objectdictionary.INTEGER8: "int8",
-    canopen.objectdictionary.INTEGER16: "int16",
-    canopen.objectdictionary.INTEGER32: "int32",
-    canopen.objectdictionary.INTEGER64: "int64",
-    canopen.objectdictionary.UNSIGNED8: "uint8",
-    canopen.objectdictionary.UNSIGNED16: "uint16",
-    canopen.objectdictionary.UNSIGNED32: "uint32",
-    canopen.objectdictionary.UNSIGNED64: "uint64",
-    canopen.objectdictionary.VISIBLE_STRING: "string",
-    canopen.objectdictionary.REAL32: "float",
-    canopen.objectdictionary.REAL64: "double",
-}
-
-DT_LEN = {
-    canopen.objectdictionary.BOOLEAN: 8,
-    canopen.objectdictionary.INTEGER8: 8,
-    canopen.objectdictionary.INTEGER16: 16,
-    canopen.objectdictionary.INTEGER32: 32,
-    canopen.objectdictionary.INTEGER64: 64,
-    canopen.objectdictionary.UNSIGNED8: 8,
-    canopen.objectdictionary.UNSIGNED16: 16,
-    canopen.objectdictionary.UNSIGNED32: 32,
-    canopen.objectdictionary.UNSIGNED64: 64,
-    canopen.objectdictionary.VISIBLE_STRING: 0,
-    canopen.objectdictionary.REAL32: 32,
-    canopen.objectdictionary.REAL64: 64,
+    DataType.BOOL: "bool",
+    DataType.INT8: "int8",
+    DataType.INT16: "int16",
+    DataType.INT32: "int32",
+    DataType.INT64: "int64",
+    DataType.UINT8: "uint8",
+    DataType.UINT16: "uint16",
+    DataType.UINT32: "uint32",
+    DataType.UINT64: "uint64",
+    DataType.STR: "string",
+    DataType.FLOAT32: "float",
+    DataType.FLOAT64: "double",
 }
 
 
-def make_obj_name(obj: canopen.objectdictionary.Variable) -> str:
+def make_obj_name(obj: Variable) -> str:
     """get obj name."""
 
     name = ""
     if obj.index < 0x5000:
         name += "c3_"
 
-    if isinstance(obj.parent, canopen.ObjectDictionary):
+    if isinstance(obj.parent, ObjectDictionary):
         name += obj.name
     else:
         name += f"{obj.parent.name}_{obj.name}"
@@ -56,18 +41,18 @@ def make_obj_name(obj: canopen.objectdictionary.Variable) -> str:
     return name
 
 
-def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
+def make_dt_name(obj: Variable) -> str:
     """Make xtce data type name."""
 
-    type_name = CANOPEN_TO_XTCE_DT[obj.data_type]
+    type_name = CANOPEN_TO_XTCE_DT[DataType(obj.data_type)]
     if obj.name in ["unix_time", "updater_status"]:
         type_name = obj.name
     elif obj.value_descriptions:
-        if isinstance(obj.parent, canopen.ObjectDictionary):
+        if isinstance(obj.parent, ObjectDictionary):
             type_name += f"_c3_{obj.name}"
         else:
             type_name += f"_{obj.parent.name}_{obj.name}"
-    elif obj.data_type == canopen.objectdictionary.VISIBLE_STRING:
+    elif obj.data_type == DataType.STR:
         type_name += f"{len(obj.default) * 8}"
     elif obj.unit:
         type_name += f"_{obj.unit}"
@@ -78,7 +63,7 @@ def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
     return type_name
 
 
-def write_xtce(mission_config: MissionConfig, od: ObjectDictionary):
+def write_xtce(mission_config: MissionConfig, od: ObjectDictionary) -> None:
     root = ET.Element(
         "SpaceSystem",
         attrib={
@@ -184,7 +169,8 @@ def write_xtce(mission_config: MissionConfig, od: ObjectDictionary):
             continue
         para_types.append(name)
 
-        if obj.data_type == canopen.objectdictionary.BOOLEAN:
+        data_type = DataType(obj.data_type)
+        if data_type == DataType.BOOL:
             para_type = ET.SubElement(
                 tm_meta_para,
                 "BooleanParameterType",
@@ -194,7 +180,7 @@ def write_xtce(mission_config: MissionConfig, od: ObjectDictionary):
                     "oneStringValue": "1",
                 },
             )
-        elif obj.data_type in canopen.objectdictionary.UNSIGNED_TYPES and obj.value_descriptions:
+        elif data_type.name.startswith("UINT") and obj.value_descriptions:
             para_type = ET.SubElement(
                 tm_meta_para,
                 "EnumeratedParameterType",
@@ -212,8 +198,8 @@ def write_xtce(mission_config: MissionConfig, od: ObjectDictionary):
                         "label": name,
                     },
                 )
-        elif obj.data_type in canopen.objectdictionary.INTEGER_TYPES:
-            if obj.data_type in canopen.objectdictionary.UNSIGNED_TYPES:
+        elif data_type.is_int:
+            if data_type.name.startswith("UINT"):
                 signed = False
                 encoding = "unsigned"
             else:
@@ -246,7 +232,7 @@ def write_xtce(mission_config: MissionConfig, od: ObjectDictionary):
                 attrib={
                     "byteOrder": "leastSignificantByteFirst",
                     "encoding": encoding,
-                    "sizeInBits": str(DT_LEN[obj.data_type]),
+                    "sizeInBits": str(data_type.size),
                 },
             )
             if obj.factor != 1:
@@ -260,7 +246,7 @@ def write_xtce(mission_config: MissionConfig, od: ObjectDictionary):
                         "coefficient": str(obj.factor),
                     },
                 )
-        elif obj.data_type == canopen.objectdictionary.VISIBLE_STRING:
+        elif data_type == DataType.STR:
             para_type = ET.SubElement(
                 tm_meta_para,
                 "StringParameterType",
@@ -348,12 +334,18 @@ def write_xtce(mission_config: MissionConfig, od: ObjectDictionary):
     tree.write(file_name, encoding="utf-8", xml_declaration=True)
 
 
-def gen_xtce(cards_config_path: str, mission_config_paths: Union[str, list[str]]):
+def gen_xtce(
+    cards_config_path: str | Path, mission_config_paths: str | Path | list[str | Path]
+) -> None:
+    if isinstance(cards_config_path, str):
+        cards_config_path = Path(cards_config_path)
     cards_config = CardsConfig.from_yaml(cards_config_path)
-    if isinstance(mission_config_paths, str):
+
+    if isinstance(mission_config_paths, (str, Path)):
         mission_config_paths = [mission_config_paths]
     mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
-    config_dir = os.path.dirname(cards_config_path)
+
+    config_dir = cards_config_path.parent
     od_configs = load_od_configs(cards_config, config_dir)
     od_db = load_od_db(cards_config, od_configs)
     for mission_config in mission_configs:

@@ -1,47 +1,55 @@
-import os
+from __future__ import annotations
+
+from pathlib import Path
 
 from canopen.objectdictionary import Array, ObjectDictionary, Variable
 
-from .._yaml_to_od import DataType, gen_od
+from .._yaml_to_od import TPDO_COMM_START, TPDO_PARA_START, DataType, gen_od
 from ..configs.od_config import OdConfig
-from . import INDENT4, __version__, snake_to_camel
+from . import INDENT4, OTHER_STD_OBJS_START, __version__, snake_to_camel
 
 
-def make_enum_lines(name, enums) -> list[str]:
+def make_enum_lines(name: str, enums: dict[int, str]) -> list[str]:
     lines = ["\n\n"]
     class_name = snake_to_camel(name)
     lines.append(f"class {class_name}(Enum):\n")
-    for value, name in enums.items():
-        lines.append(f"    {name.upper()} = {value}\n")
+    for value, e_name in enums.items():
+        lines.append(f"    {e_name.upper()} = {value}\n")
     return lines
 
 
-def make_bitfield_lines(name, bitfields) -> list[str]:
+def make_bitfield_lines(name: str, bitfields: dict[str, int | list[int]]) -> list[str]:
     lines = ["\n\n"]
     class_name = snake_to_camel(name) + "BitField"
     lines.append(f"class {class_name}(EntryBitField):\n")
     for b_name, value in bitfields.items():
-        if isinstance(value, int):
-            value = [value]
-        bits = len(value)
-        offset = min(value)
+        values = [value] if isinstance(value, int) else value
+        bits = len(values)
+        offset = min(values)
         lines.append(f"    {b_name.upper()} = {offset}, {bits}\n")
     return lines
 
 
-def write_cand_od(name: str, od: ObjectDictionary, dir_path: str = ".", add_tpdos: bool = True):
+def write_cand_od(
+    name: str, od: ObjectDictionary, dir_path: str | Path | None = None, add_tpdos: bool = True
+) -> None:
     enums = {}
     bitfields = {}
     entries = {}
     tpdos = []
 
+    if dir_path is None:
+        dir_path = Path().cwd()
+    elif isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     for index in sorted(od.indices):
         obj = od[index]
 
-        if 0x1800 <= index < 0x1A00:
-            tpdos.append(index - 0x1800)
+        if TPDO_COMM_START <= index < TPDO_PARA_START:
+            tpdos.append(index - TPDO_COMM_START)
 
-        if index < 0x2000:
+        if index < OTHER_STD_OBJS_START:
             continue
 
         if isinstance(obj, Variable):
@@ -132,23 +140,23 @@ def write_cand_od(name: str, od: ObjectDictionary, dir_path: str = ".", add_tpdo
         for i in range(len(tpdos)):
             lines.append(f"{INDENT4}TPDO_{tpdos[i] + 1} = {i}\n")
 
-    if dir_path:
-        os.makedirs(dir_path, exist_ok=True)
-
-    output_file = os.path.join(dir_path, f"{name}_od.py")
-    with open(output_file, "w") as f:
+    dir_path.mkdir(parents=True, exist_ok=True)
+    output_file = dir_path / f"{name}_od.py"
+    with output_file.open("w") as f:
         f.writelines(lines)
 
 
-def gen_cand_files(od_config_path: str, dir_path: str):
+def gen_cand_files(od_config_path: str | Path, dir_path: str | Path) -> None:
+    if isinstance(od_config_path, str):
+        od_config_path = Path(od_config_path)
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
     od_config = OdConfig.from_yaml(od_config_path)
     od = gen_od([od_config])
 
-    if not os.path.isdir(dir_path):
-        os.makedirs(dir_path, exist_ok=True)
-
-    init_file = os.path.join(dir_path, "__init__.py")
-    if not os.path.isfile(init_file):
-        open(init_file, "w").close()
+    dir_path.mkdir(parents=True, exist_ok=True)
+    init_file = dir_path / "__init__.py"
+    init_file.touch()
 
     write_cand_od(od_config.name, od, dir_path)
