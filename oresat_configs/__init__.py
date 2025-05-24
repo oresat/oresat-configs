@@ -12,7 +12,6 @@ from .configs.mission_config import MissionConfig
 from .configs.od_config import OdConfig
 from .scripts import __version__
 from .scripts.gen_cand import gen_cand_files
-from .scripts.gen_cand_config import gen_cand_manager_od_config, gen_cand_od_config
 from .scripts.gen_cand_manager import gen_cand_manager_files
 from .scripts.gen_canopennode import gen_canopennode_files
 from .scripts.gen_dbc import gen_dbc, gen_dbc_node
@@ -30,8 +29,6 @@ __all__ = [
     "__version__",
     "gen_cand_files",
     "gen_cand_manager_files",
-    "gen_cand_manager_od_config",
-    "gen_cand_od_config",
     "gen_canopennode_files",
     "gen_dbc",
     "gen_dbc_node",
