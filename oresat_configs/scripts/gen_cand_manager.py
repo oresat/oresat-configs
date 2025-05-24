@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
+from string import Template
 
 from canopen.objectdictionary import Array, ObjectDictionary, Variable
 
@@ -14,6 +14,7 @@ from .._yaml_to_od import (
     load_od_db,
 )
 from ..configs.cards_config import CardInfo, CardsConfig
+from ..configs.edl_config import EdlCommandConfig, EdlCommandFieldConfig, load_edl_config
 from ..configs.mission_config import MissionConfig, pack_beacon_header
 from ..configs.od_config import OdConfig
 from . import (
@@ -26,7 +27,41 @@ from . import (
     __version__,
     snake_to_camel,
 )
-from .gen_cand import make_bitfield_lines, make_enum_lines, write_cand_od
+from .gen_cand import make_bitfield_lines, make_enum_lines, write_cand_od, write_cand_od_config
+
+EDL_TEMPLATE = Path(__file__).parent / "edl_commands.py.txt"
+
+# custom struct-like formats for dynamic length strings and bytearrays
+DYN_STR_FMT = "w"
+DYN_BYTES_FMT = "y"
+
+DT_2_STRUCT_FMT = {
+    DataType.BOOL: "?",
+    DataType.INT8: "b",
+    DataType.INT16: "h",
+    DataType.INT32: "i",
+    DataType.INT64: "q",
+    DataType.UINT8: "B",
+    DataType.UINT16: "H",
+    DataType.UINT32: "I",
+    DataType.UINT64: "Q",
+    DataType.OCTET_STR: DYN_BYTES_FMT,
+    DataType.STR: DYN_STR_FMT,
+}
+
+DT_2_PY_TYPE = {
+    DataType.BOOL: "bool",
+    DataType.INT8: "int",
+    DataType.INT16: "int",
+    DataType.INT32: "int",
+    DataType.INT64: "int",
+    DataType.UINT8: "int",
+    DataType.UINT16: "int",
+    DataType.UINT32: "int",
+    DataType.UINT64: "int",
+    DataType.OCTET_STR: "bytes",
+    DataType.STR: "str",
+}
 
 
 def write_cand_manager_od(
@@ -108,12 +143,13 @@ def write_cand_manager_od(
                 if sub1.bit_definitions:
                     bitfields[obj_name] = sub1.bit_definitions
             else:
+                obj_name = f"{name}_{obj.name}"
                 card = get_card(obj_name)
                 tmp = obj_name.replace(card.name, card.common)
                 if tmp in common_indexes:
-                    if obj.value_descriptions:
+                    if sub1.value_descriptions:
                         imports[card.common].append(tmp)
-                    if obj.bit_definitions:
+                    if sub1.bit_definitions:
                         imports[card.common].append(tmp + "_bit_field")
                 else:
                     obj_name = obj_name.replace(card.name, card.base)
@@ -172,9 +208,9 @@ def write_cand_manager_od(
         lines.append("\n")
     for i_name, im in imports.items():
         if im:
-            im = [snake_to_camel(i) for i in im]
-            im = sorted(list(set(im)))
-            lines.append(f"from .{i_name}_od import {', '.join(im)}\n")
+            ims = [snake_to_camel(i) for i in im]
+            ims = sorted(set(ims))
+            lines.append(f"from .{i_name}_od import {', '.join(ims)}\n")
 
     for e_name, values in enums.items():
         lines += make_enum_lines(e_name, values)
@@ -224,11 +260,9 @@ def write_cand_manager_od(
         for i in range(len(tpdos)):
             lines.append(f"{INDENT4}TPDO_{tpdos[i] + 1} = {i}\n")
 
-    if dir_path:
-        os.makedirs(dir_path, exist_ok=True)
-
-    output_file = os.path.join(dir_path, f"{name}_od.py")
-    with open(output_file, "w") as f:
+    dir_path.mkdir(parents=True, exist_ok=True)
+    output_file = dir_path / f"{name}_od.py"
+    with output_file.open("w") as f:
         f.writelines(lines)
 
 
@@ -254,7 +288,7 @@ def write_cand_mission_defs(
         name_upper = mission_config.name.upper()
         mission_lines.append(
             f"from .{mission_config.name} import {name_upper}_BEACON_HEADER, "
-            f"{name_upper}_BEACON_BODY, {name_upper}_NODES\n"
+            f"{name_upper}_BEACON_BODY, {name_upper}_EDL_SCID, {name_upper}_NODES\n"
         )
 
     mission_lines += [
@@ -263,8 +297,9 @@ def write_cand_mission_defs(
         "class MissionDef:\n",
         f"{INDENT4}nice_name: str\n",
         f"{INDENT4}id: int\n",
-        f"{INDENT4}header: bytes\n",
-        f"{INDENT4}body: list[C3Entry]\n",
+        f"{INDENT4}beacon_header: bytes\n",
+        f"{INDENT4}beacon_body: list[C3Entry]\n",
+        f"{INDENT4}edl_scid: int\n"
         f"{INDENT4}nodes: list[Node]\n",
         "\n\n",
     ]
@@ -278,8 +313,8 @@ def write_cand_mission_defs(
         name_upper = mission_config.name.upper()
         mission_lines.append(
             f'{INDENT4}{name_upper} = "{mission_config.nice_name}", {mission_config.id}, '
-            f"{name_upper}_BEACON_HEADER, "
-            f"{name_upper}_BEACON_BODY, {name_upper}_NODES\n"
+            f"{name_upper}_BEACON_HEADER, {name_upper}_BEACON_BODY, "
+            f"{name_upper}_EDL_SCID, {name_upper}_NODES\n"
         )
     mission_lines += [
         "\n",
@@ -301,6 +336,7 @@ def write_cand_mission_defs(
         mission_lines = [
             "from ..nodes import Node\n",
             f"from ..{manager_name}_od import {snake_to_camel(manager_name)}Entry\n\n",
+            f"{name_upper}_EDL_SCID = 0x{mission_config.edl.spacecraft_id:X}\n\n"
         ]
 
         mission_lines.append(f"{name_upper}_NODES = [\n")
@@ -417,18 +453,100 @@ def write_cand_od_all(
         common_od_configs,
         dir_path,
     )
+    write_cand_od_config(od_db[cards_config.manager.name], dir_path)
+
+
+def _join_fmts(fmts: list[str]) -> list[str]:
+    new_fmts = []
+    tmp = ""
+    for fmt in fmts:
+        if fmt in [DYN_BYTES_FMT, DYN_STR_FMT]:
+            if tmp:
+                new_fmts.append(tmp)
+                tmp = ""
+            new_fmts.append(fmt)
+        else:
+            tmp += fmt
+    if tmp:
+        new_fmts.append(tmp)
+    return new_fmts
+
+
+def _make_msg_class(name: str, cmd_id: int, fields: list[EdlCommandFieldConfig]) -> str:
+    def dt2fmt(data_type: str) -> str:
+        return DT_2_STRUCT_FMT[DataType[data_type.upper()]]
+
+    def dt2py(data_type: str) -> str:
+        return DT_2_PY_TYPE[DataType[data_type.upper()]]
+
+    fmts = ["B"] + [dt2fmt(field.data_type) for field in fields]
+    fmts = _join_fmts(fmts)
+    return (
+        f"@dataclass\n"
+        f"class {name}(EdlMessage):\n"
+        f"{INDENT4}_fmt: ClassVar[list[str]] = {fmts}\n"
+        f"{INDENT4}_id: ClassVar[int] = 0x{cmd_id:X}\n"
+        + "".join([f"{INDENT4}{field.name}: {dt2py(field.data_type)}\n" for field in fields])
+        + "\n\n"
+    )
+
+
+def write_cand_edl_def(edl_config: list[EdlCommandConfig], dir_path: Path | str) -> None:
+    if isinstance(dir_path, str):
+        dir_path = Path(dir_path)
+
+    with EDL_TEMPLATE.open("r") as f:
+        tpl = Template(f.read())
+
+    req_msgs = ""
+    res_msgs = ""
+    cmd_enums = ""
+    cmd_table = ""
+
+    for e in edl_config:
+        req_name = "None"
+        res_name = "None"
+        cmd_enums += f"{INDENT4}{e.name.upper()} = 0x{edl_config.index(e):X}\n"
+        if e.request:
+            req_name = f"{snake_to_camel(e.name)}EdlRequest"
+            req_msgs += _make_msg_class(req_name, e.id, e.request)
+        if e.response:
+            res_name = f"{snake_to_camel(e.name)}EdlResponse"
+            res_msgs += _make_msg_class(res_name, e.id, e.response)
+        cmd_table += (
+            f"{INDENT4}EdlCommandId.{e.name.upper()}: EdlCommand({req_name}, {res_name}),\n"
+        )
+
+    out = tpl.substitute(
+        dyn_str_fmt=DYN_STR_FMT,
+        dyn_bytes_fmt=DYN_BYTES_FMT,
+        req_msgs=req_msgs[:-1],
+        res_msgs=res_msgs[:-1],
+        cmd_enums=cmd_enums,
+        cmd_table=cmd_table[:-1],
+    )
+
+    file_path = dir_path / "edl_commands.py"
+    with file_path.open("w") as f:
+        f.write(out)
+
+    dir_path.mkdir(parents=True, exist_ok=True)
 
 
 def gen_cand_manager_files(
     cards_config_path: Path | str,
     mission_config_paths: list[Path] | list[str],
+    edl_config_path: Path | str,
     dir_path: Path | str,
 ) -> None:
     if isinstance(cards_config_path, str):
         cards_config_path = Path(cards_config_path)
+    if isinstance(edl_config_path, str):
+        edl_config_path = Path(edl_config_path)
     if isinstance(dir_path, str):
         dir_path = Path(dir_path)
 
+    edl_config = load_edl_config(edl_config_path)
     cards_config = CardsConfig.from_yaml(cards_config_path)
     mission_configs = [MissionConfig.from_yaml(m) for m in mission_config_paths]
     config_dir = cards_config_path.parent
@@ -444,3 +562,4 @@ def gen_cand_manager_files(
     write_cand_mission_defs(manager_name, mission_configs, cards_config, dir_path)
     write_cand_fram_def(cards_config.manager, od_configs[manager_name].fram, dir_path)
     write_cand_nodes(cards_config, dir_path)
+    write_cand_edl_def(edl_config, dir_path)

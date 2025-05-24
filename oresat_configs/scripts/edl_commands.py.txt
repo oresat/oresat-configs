@@ -1,0 +1,108 @@
+from __future__ import annotations
+
+import struct
+from dataclasses import astuple, dataclass
+from enum import Enum, unique
+from typing import ClassVar
+
+LEN_FMT = "I"
+LEN_FMT_SIZE = struct.calcsize(LEN_FMT)
+DYN_STR_FMT = "${dyn_str_fmt}"
+DYN_BYTES_FMT = "${dyn_bytes_fmt}"
+
+
+@unique
+class EdlCommandId(Enum):
+${cmd_enums}
+
+@dataclass
+class EdlMessage:
+    _fmt: ClassVar[list[str]] = []
+    _id: ClassVar[int] = 0xFF
+
+    @classmethod
+    def unpack(cls, raw: bytes):
+        offset = 0
+        values = ()
+        for fmt in cls._fmt:
+            if fmt == DYN_STR_FMT:
+                str_len = struct.unpack("<" + LEN_FMT, raw[offset: offset + LEN_FMT_SIZE])[0]
+                values += (raw[offset + LEN_FMT_SIZE: offset + LEN_FMT_SIZE + str_len].decode(), )
+                offset += LEN_FMT_SIZE + str_len
+            elif fmt == DYN_BYTES_FMT:
+                bytes_len = struct.unpack("<" + LEN_FMT, raw[offset: offset + LEN_FMT_SIZE])[0]
+                values += (raw[offset + LEN_FMT_SIZE: offset + LEN_FMT_SIZE + bytes_len], )
+                offset += LEN_FMT_SIZE + bytes_len
+            else:
+                size = struct.calcsize("<" + fmt)
+                values += struct.unpack("<" + fmt, raw[offset: offset + size])
+                offset += size
+        return cls(*values)
+
+    def pack(self) -> bytes:
+        raw = b""
+        offset = 0
+        values = astuple(self)
+        for fmt in self._fmt:
+            if fmt == DYN_STR_FMT:
+                value = values[offset]
+                raw += struct.pack("<" + LEN_FMT, len(value)) + value.encode()
+                offset += 1
+            elif fmt == DYN_BYTES_FMT:
+                value = values[offset]
+                raw += struct.pack("<" + LEN_FMT, len(value)) + value
+                offset += 1
+            else:
+                raw += struct.pack("<" + fmt, *values[offset : offset + len(fmt)])
+                offset += len(fmt)
+        return raw
+
+    @property
+    def id(self) -> EdlCommandId:
+        return EdlCommandId(self._id)
+
+${req_msgs}
+${res_msgs}
+@dataclass
+class EdlCommand:
+    request: EdlMessage | None
+    response: EdlMessage | None
+
+
+EDL_COMMANDS = {
+${cmd_table}
+}
+
+
+@dataclass
+class EdlCommandRequest:
+    id: int
+    payload: EdlMessage | None
+
+    @classmethod
+    def unpack(cls, raw: bytes) -> EdlCommandRequest:
+        cmd_id = raw[0]
+        cmd = EDL_COMMANDS.get(EdlCommandId(id), None)
+        payload = None if cmd is None or cmd.request is None else cmd.request.unpack(raw)
+        return cls(cmd_id, payload)
+
+    def pack(self) -> bytes:
+        raw = self.payload.pack() if self.payload is not None else b""
+        return struct.pack("<B", self.id) + raw
+
+
+@dataclass
+class EdlCommandResponse:
+    id: int
+    payload: EdlMessage | None
+
+    @classmethod
+    def unpack(cls, raw: bytes) -> EdlCommandResponse:
+        cmd_id = raw[0]
+        cmd = EDL_COMMANDS.get(EdlCommandId(id), None)
+        payload = None if cmd is None or cmd.response is None else cmd.response.unpack(raw)
+        return cls(cmd_id, payload)
+
+    def pack(self) -> bytes:
+        raw = self.payload.pack() if self.payload is not None else b""
+        return struct.pack("<B", self.id) + raw

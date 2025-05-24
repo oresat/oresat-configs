@@ -13,6 +13,12 @@ AX25_PAYLOAD_MAX_LEN = 256
 
 
 @dataclass
+class EdlMissionConfig:
+    spacecraft_id: int
+    """Unique spacecraft id used in EDL/USLP packets. Can be 0x0 to 0xFFFF."""
+
+
+@dataclass
 class BeaconAx25Config:
     """
     AX.25 beacon config section.
@@ -67,9 +73,8 @@ class BeaconConfig:
           src_ssid: 0
           ...
         fields:
-          - [beacon, start_chars]
-          - [satellite_id]
-          - [beacon, revision]
+          - [data_1]
+          - [data_2]
           ...
     """
 
@@ -89,6 +94,7 @@ class MissionConfig:
     name: str
     nice_name: str
     id: int
+    edl: EdlMissionConfig
     beacon: BeaconConfig
 
     @classmethod

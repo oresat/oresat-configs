@@ -41,6 +41,9 @@ exclude = ["docs*", "tests*"]
 [tool.setuptools_scm]
 write_to = "oresat_configs/_version.py"
 
+[tool.setuptools.package-data]
+"*" = ["*.txt"]
+
 [tool.ruff]
 line-length = 100
 

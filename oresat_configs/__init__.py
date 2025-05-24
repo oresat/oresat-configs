@@ -7,6 +7,7 @@ from ._yaml_to_od import (
     set_od_node_id,
 )
 from .configs.cards_config import CardsConfig
+from .configs.edl_config import EdlCommandConfig, EdlCommandFieldConfig, load_edl_config
 from .configs.mission_config import MissionConfig
 from .configs.od_config import OdConfig
 from .scripts import __version__
@@ -22,6 +23,8 @@ from .scripts.gen_xtce import gen_xtce
 __all__ = [
     "CardsConfig",
     "DataType",
+    "EdlCommandConfig",
+    "EdlCommandFieldConfig",
     "MissionConfig",
     "OdConfig",
     "__version__",
@@ -37,6 +40,7 @@ __all__ = [
     "gen_od",
     "gen_rst_manager_files",
     "gen_xtce",
+    "load_edl_config",
     "load_od_configs",
     "load_od_db",
     "set_od_node_id",
