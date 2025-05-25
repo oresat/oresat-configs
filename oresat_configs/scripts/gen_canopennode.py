@@ -357,10 +357,14 @@ def write_canopennode_h(od: ObjectDictionary, dir_path: str | Path) -> None:
         f"#define OD_CNT_SDO_CLI {int(0x1280 in od)}",
         f"#define OD_CNT_TIME {int(0x1012 in od)}",
         f"#define OD_CNT_SYNC {int(0x1005 in od and 0x1006 in od)}",
-        f"#define OD_CNT_RPDO {od.device_information.nr_of_RXPDO}",
-        f"#define OD_CNT_TPDO {od.device_information.nr_of_TXPDO}",
-        "",
     ]
+
+    # CANopenNode has a bug when these are set to 0, fix is to not include them when they are 0
+    if od.device_information.nr_of_RXPDO:
+        lines.append(f"#define OD_CNT_RPDO {od.device_information.nr_of_RXPDO}")
+    if od.device_information.nr_of_TXPDO:
+        lines.append(f"#define OD_CNT_TPDO {od.device_information.nr_of_TXPDO}")
+    lines.append("")
 
     for i in od:
         if isinstance(od[i], Array):
