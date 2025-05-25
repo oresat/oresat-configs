@@ -403,7 +403,7 @@ def write_cand_cards(cards_config: CardsConfig, dir_path: Path | str) -> None:
         base = card.base.upper() if card.base else "NONE"
         cards += f", CardBase.{base}"
         if card.child:
-            cards += f", {card.child.upper()}"
+            cards += f', "{card.child.upper()}"'
         cards += "\n"
 
     out = tpl.substitute(card_processors=card_processors, card_bases=card_bases, cards=cards)

@@ -141,9 +141,7 @@ def write_beacon_rst_files(
     size = len(sd)
     desc = "\nax.25 packet header (see above)\n"
     desc = desc.replace("\n", "\n   ")
-    lines.append(
-        f'   "{offset}", "{manager}", "ax25_header", "", "bytes", "{size}", "{desc}"\n'
-    )
+    lines.append(f'   "{offset}", "{manager}", "ax25_header", "", "bytes", "{size}", "{desc}"\n')
     offset += size
 
     size = 3

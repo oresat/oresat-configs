@@ -19,7 +19,7 @@ class CardDef:
     opd_address: int
     opd_always_on: bool
     base: CardBase
-    child: Card | None = None
+    child_name: str = ""
 
 
 class Card(CardDef, Enum):
@@ -48,3 +48,9 @@ ${cards}
             if c.name == name_upper:
                 return c
         raise ValueError(f"no card with name {name}")
+
+    @property
+    def child(self) -> Card | None:
+        if self.child_name:
+            return Card[self.child_name]
+        return None
