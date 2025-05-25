@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -19,8 +19,8 @@ class EdlCommandConfig:
     id: int
     name: str
     description: str
-    request: list[EdlCommandFieldConfig] | None = None
-    response: list[EdlCommandFieldConfig] | None = None
+    request: list[EdlCommandFieldConfig] = field(default_factory=list)
+    response: list[EdlCommandFieldConfig] = field(default_factory=list)
 
 
 def load_edl_config(config_path: str | Path) -> list[EdlCommandConfig]:

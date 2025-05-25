@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum, auto
+
+
+class CardProcessor(Enum):
+    NONE = 0
+${card_processors}
+
+class CardBase(Enum):
+    NONE = 0
+${card_bases}
+
+@dataclass
+class CardDef:
+    node_id: int
+    processor: CardProcessor
+    opd_address: int
+    opd_always_on: bool
+    base: CardBase
+    child: Card | None = None
+
+
+class Card(CardDef, Enum):
+${cards}
+    def __hash__(self) -> int:
+        return self.node_id << 8 + self.opd_address
+
+    @classmethod
+    def from_node_id(cls, node_id: int) -> Card:
+        for c in cls:
+            if c.node_id == node_id:
+                return c
+        raise ValueError(f"no card with node id 0x{node_id:X}")
+
+    @classmethod
+    def from_opd_address(cls, opd_address: int) -> Card:
+        for c in cls:
+            if c.opd_address == opd_address:
+                return c
+        raise ValueError(f"no card with opd address 0x{opd_address:X}")
+
+    @classmethod
+    def from_name(cls, name: str) -> Card:
+        name_upper = name.replace("-", "_").upper()
+        for c in cls:
+            if c.name == name_upper:
+                return c
+        raise ValueError(f"no card with name {name}")

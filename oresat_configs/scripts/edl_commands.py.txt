@@ -18,7 +18,6 @@ ${cmd_enums}
 @dataclass
 class EdlMessage:
     _fmt: ClassVar[list[str]] = []
-    _id: ClassVar[int] = 0xFF
 
     @classmethod
     def unpack(cls, raw: bytes):
@@ -57,10 +56,6 @@ class EdlMessage:
                 offset += len(fmt)
         return raw
 
-    @property
-    def id(self) -> EdlCommandId:
-        return EdlCommandId(self._id)
-
 ${req_msgs}
 ${res_msgs}
 @dataclass
@@ -82,8 +77,8 @@ class EdlCommandRequest:
     @classmethod
     def unpack(cls, raw: bytes) -> EdlCommandRequest:
         cmd_id = raw[0]
-        cmd = EDL_COMMANDS.get(EdlCommandId(id), None)
-        payload = None if cmd is None or cmd.request is None else cmd.request.unpack(raw)
+        cmd = EDL_COMMANDS.get(EdlCommandId(cmd_id), None)
+        payload = None if cmd is None or cmd.request is None else cmd.request.unpack(raw[1:])
         return cls(cmd_id, payload)
 
     def pack(self) -> bytes:
@@ -99,8 +94,8 @@ class EdlCommandResponse:
     @classmethod
     def unpack(cls, raw: bytes) -> EdlCommandResponse:
         cmd_id = raw[0]
-        cmd = EDL_COMMANDS.get(EdlCommandId(id), None)
-        payload = None if cmd is None or cmd.response is None else cmd.response.unpack(raw)
+        cmd = EDL_COMMANDS.get(EdlCommandId(cmd_id), None)
+        payload = None if cmd is None or cmd.response is None else cmd.response.unpack(raw[1:])
         return cls(cmd_id, payload)
 
     def pack(self) -> bytes:

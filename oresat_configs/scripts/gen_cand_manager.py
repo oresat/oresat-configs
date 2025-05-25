@@ -30,6 +30,7 @@ from . import (
 from .gen_cand import make_bitfield_lines, make_enum_lines, write_cand_od, write_cand_od_config
 
 EDL_TEMPLATE = Path(__file__).parent / "edl_commands.py.txt"
+CARDS_TEMPLATE = Path(__file__).parent / "cards.py.txt"
 
 # custom struct-like formats for dynamic length strings and bytearrays
 DYN_STR_FMT = "w"
@@ -220,8 +221,8 @@ def write_cand_manager_od(
 
     lines.append("\n")
     lines.append("\n")
-    node_name = snake_to_camel(name)
-    lines.append(f"class {node_name}Entry(Entry):\n")
+    card_name = snake_to_camel(name)
+    lines.append(f"class {card_name}Entry(Entry):\n")
     for entry_name, obj in entries.items():
         dt = DataType(obj.data_type)
 
@@ -267,7 +268,7 @@ def write_cand_manager_od(
 
 
 def write_cand_mission_defs(
-    node_name: str,
+    card_name: str,
     mission_configs: list[MissionConfig],
     cards_config: CardsConfig,
     dir_path: str | Path,
@@ -275,20 +276,20 @@ def write_cand_mission_defs(
     if isinstance(dir_path, str):
         dir_path = Path(dir_path)
 
-    node_name_camel = snake_to_camel(node_name)
+    card_name_camel = snake_to_camel(card_name)
     mission_lines = [
         "from enum import Enum\n",
         "from dataclasses import dataclass\n",
         "\n",
-        f"from ..{node_name}_od import {node_name_camel}Entry\n",
-        "from ..nodes import Node\n",
+        f"from ..{card_name}_od import {card_name_camel}Entry\n",
+        "from ..cards import Card\n",
     ]
 
     for mission_config in mission_configs:
         name_upper = mission_config.name.upper()
         mission_lines.append(
             f"from .{mission_config.name} import {name_upper}_BEACON_HEADER, "
-            f"{name_upper}_BEACON_BODY, {name_upper}_EDL_SCID, {name_upper}_NODES\n"
+            f"{name_upper}_BEACON_BODY, {name_upper}_EDL_SCID, {name_upper}_CARDS\n"
         )
 
     mission_lines += [
@@ -299,8 +300,7 @@ def write_cand_mission_defs(
         f"{INDENT4}id: int\n",
         f"{INDENT4}beacon_header: bytes\n",
         f"{INDENT4}beacon_body: list[C3Entry]\n",
-        f"{INDENT4}edl_scid: int\n"
-        f"{INDENT4}nodes: list[Node]\n",
+        f"{INDENT4}edl_scid: int\n{INDENT4}cards: list[Card]\n",
         "\n\n",
     ]
 
@@ -314,7 +314,7 @@ def write_cand_mission_defs(
         mission_lines.append(
             f'{INDENT4}{name_upper} = "{mission_config.nice_name}", {mission_config.id}, '
             f"{name_upper}_BEACON_HEADER, {name_upper}_BEACON_BODY, "
-            f"{name_upper}_EDL_SCID, {name_upper}_NODES\n"
+            f"{name_upper}_EDL_SCID, {name_upper}_CARDS\n"
         )
     mission_lines += [
         "\n",
@@ -334,15 +334,15 @@ def write_cand_mission_defs(
     for mission_config in mission_configs:
         name_upper = mission_config.name.upper()
         mission_lines = [
-            "from ..nodes import Node\n",
+            "from ..cards import Card\n",
             f"from ..{manager_name}_od import {snake_to_camel(manager_name)}Entry\n\n",
-            f"{name_upper}_EDL_SCID = 0x{mission_config.edl.spacecraft_id:X}\n\n"
+            f"{name_upper}_EDL_SCID = 0x{mission_config.edl.spacecraft_id:X}\n\n",
         ]
 
-        mission_lines.append(f"{name_upper}_NODES = [\n")
+        mission_lines.append(f"{name_upper}_CARDS = [\n")
         for card in cards_config.cards:
             if not card.missions or mission_config.name in card.missions:
-                mission_lines.append(f"{INDENT8}Node.{card.name.upper()},\n")
+                mission_lines.append(f"{INDENT8}Card.{card.name.upper()},\n")
         mission_lines.append("]\n")
         mission_lines.append("\n")
 
@@ -351,7 +351,7 @@ def write_cand_mission_defs(
 
         mission_lines.append(f"{name_upper}_BEACON_BODY = [\n")
         for names in mission_config.beacon.fields:
-            mission_lines.append(f"{INDENT4}{node_name_camel}Entry.{'_'.join(names).upper()},\n")
+            mission_lines.append(f"{INDENT4}{card_name_camel}Entry.{'_'.join(names).upper()},\n")
         mission_lines.append("]\n")
 
         output_file = mission_path / f"{mission_config.name}.py"
@@ -363,13 +363,13 @@ def write_cand_fram_def(card: CardInfo, fram_def: list[list[str]], dir_path: str
     if isinstance(dir_path, str):
         dir_path = Path(dir_path)
 
-    node_name_camel = snake_to_camel(card.name)
+    card_name_camel = snake_to_camel(card.name)
     fram_lines = [
-        f"from .{card.name}_od import {node_name_camel}Entry\n",
+        f"from .{card.name}_od import {card_name_camel}Entry\n",
         "\n\nFRAM_DEF = [\n",
     ]
     for names in fram_def:
-        fram_lines.append(f"    {node_name_camel}Entry.{'_'.join(names).upper()},\n")
+        fram_lines.append(f"    {card_name_camel}Entry.{'_'.join(names).upper()},\n")
     fram_lines.append("]")
 
     dir_path.mkdir(parents=True, exist_ok=True)
@@ -378,55 +378,40 @@ def write_cand_fram_def(card: CardInfo, fram_def: list[list[str]], dir_path: str
         f.writelines(fram_lines)
 
 
-def write_cand_nodes(cards_config: CardsConfig, dir_path: Path | str) -> None:
+def write_cand_cards(cards_config: CardsConfig, dir_path: Path | str) -> None:
     if isinstance(dir_path, str):
         dir_path = Path(dir_path)
 
-    lines = [
-        "from dataclasses import dataclass\n",
-        "from enum import Enum, auto\n",
-        "\n\n",
-        "class NodeProcessor(Enum):\n",
-        f"{INDENT4}NONE = 0\n",
-        f"{INDENT4}STM32 = auto()\n",
-        f"{INDENT4}OCTAVO = auto()\n",
-        "\n\n",
-    ]
+    with CARDS_TEMPLATE.open("r") as f:
+        tpl = Template(f.read())
 
-    lines.append("class NodeBase(Enum):\n")
-    lines.append(f"{INDENT4}NONE = 0\n")
+    card_processors = ""
+    procs = {card.processor for card in cards_config.cards if card.processor.lower() != "none"}
+    card_processors += "".join([f"{INDENT4}{p.upper()} = auto()\n" for p in procs])
+
+    card_bases = ""
     for card_info in cards_config.configs:
-        lines.append(f"{INDENT4}{card_info.name.upper()} = auto()\n")
+        card_bases += f"{INDENT4}{card_info.name.upper()} = auto()\n"
 
-    lines += [
-        "\n\n",
-        "@dataclass\n",
-        "class NodeDef:\n",
-        f"{INDENT4}node_id: int\n",
-        f"{INDENT4}processor: NodeProcessor\n",
-        f"{INDENT4}opd_address: int\n",
-        f"{INDENT4}opd_always_on: bool\n",
-        f"{INDENT4}base: NodeBase\n",
-        f'{INDENT4}child: str = ""\n',
-    ]
-
-    lines.append("\n\nclass Node(NodeDef, Enum):\n")
+    cards = ""
     for card in cards_config.cards:
-        line = (
+        cards += (
             f"{INDENT4}{card.name.upper()} = 0x{card.node_id:X}, "
-            f"NodeProcessor.{card.processor.upper()}, "
+            f"CardProcessor.{card.processor.upper()}, "
             f"0x{card.opd_address:X}, {card.opd_always_on}"
         )
         base = card.base.upper() if card.base else "NONE"
-        line += f", NodeBase.{base}"
+        cards += f", CardBase.{base}"
         if card.child:
-            line += f", {card.child.upper()}"
-        lines.append(line + "\n")
+            cards += f", {card.child.upper()}"
+        cards += "\n"
+
+    out = tpl.substitute(card_processors=card_processors, card_bases=card_bases, cards=cards)
 
     dir_path.mkdir(parents=True, exist_ok=True)
-    output_file = dir_path / "nodes.py"
+    output_file = dir_path / "cards.py"
     with output_file.open("w") as f:
-        f.writelines(lines)
+        f.write(out)
 
 
 def write_cand_od_all(
@@ -479,13 +464,12 @@ def _make_msg_class(name: str, cmd_id: int, fields: list[EdlCommandFieldConfig])
     def dt2py(data_type: str) -> str:
         return DT_2_PY_TYPE[DataType[data_type.upper()]]
 
-    fmts = ["B"] + [dt2fmt(field.data_type) for field in fields]
+    fmts = [dt2fmt(field.data_type) for field in fields]
     fmts = _join_fmts(fmts)
     return (
         f"@dataclass\n"
         f"class {name}(EdlMessage):\n"
         f"{INDENT4}_fmt: ClassVar[list[str]] = {fmts}\n"
-        f"{INDENT4}_id: ClassVar[int] = 0x{cmd_id:X}\n"
         + "".join([f"{INDENT4}{field.name}: {dt2py(field.data_type)}\n" for field in fields])
         + "\n\n"
     )
@@ -561,5 +545,5 @@ def gen_cand_manager_files(
     manager_name = cards_config.manager.name
     write_cand_mission_defs(manager_name, mission_configs, cards_config, dir_path)
     write_cand_fram_def(cards_config.manager, od_configs[manager_name].fram, dir_path)
-    write_cand_nodes(cards_config, dir_path)
+    write_cand_cards(cards_config, dir_path)
     write_cand_edl_def(edl_config, dir_path)
