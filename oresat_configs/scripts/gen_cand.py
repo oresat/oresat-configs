@@ -154,7 +154,7 @@ def write_cand_od_config(od: ObjectDictionary, dir_path: str | Path) -> None:
         subindex_str = "" if subindex is None else f"0x{subindex:X}"
         default = ""
         if var.default:  # optional
-            if var.data_type == DataType.OCTET_STR.value:
+            if var.data_type == DataType.BYTES.value:
                 default = var.default.hex()
             elif var.data_type == DataType.BOOL.value:
                 default = int(var.default)

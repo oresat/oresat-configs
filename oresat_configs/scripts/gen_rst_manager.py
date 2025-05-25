@@ -24,7 +24,7 @@ OD_DATA_TYPES = {
     DataType.FLOAT32: "float32",
     DataType.FLOAT64: "float64",
     DataType.STR: "str",
-    DataType.OCTET_STR: "octet_str",
+    DataType.BYTES: "bytes",
     DataType.DOMAIN: "domain",
 }
 """Nice names for CANopen data types."""
@@ -142,7 +142,7 @@ def write_beacon_rst_files(
     desc = "\nax.25 packet header (see above)\n"
     desc = desc.replace("\n", "\n   ")
     lines.append(
-        f'   "{offset}", "{manager}", "ax25_header", "", "octet_str", "{size}", "{desc}"\n'
+        f'   "{offset}", "{manager}", "ax25_header", "", "bytes", "{size}", "{desc}"\n'
     )
     offset += size
 

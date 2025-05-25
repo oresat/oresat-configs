@@ -17,8 +17,8 @@ class ConfigObject:
     """Data type of the object."""
     str_length: int = 1
     """
-    Length of an string or octet string object.
-    Only used when `data_type` is set to ``"str"`` or ``"octet_str"``.
+    Length of an string or bytes string object.
+    Only used when `data_type` is set to ``"str"`` or ``"bytes"``.
     """
     access_type: str = "rw"
     """

@@ -147,7 +147,7 @@ STD_OBJS = [
                 subindex=0x1,
                 name="command",
                 description="OS command",
-                data_type="octet_str",
+                data_type="bytes",
             ),
             SubindexObject(
                 subindex=0x2,
@@ -166,7 +166,7 @@ STD_OBJS = [
                 subindex=0x3,
                 name="reply",
                 description="OS command reply",
-                data_type="octet_str",
+                data_type="bytes",
                 access_type="ro",
             ),
         ],

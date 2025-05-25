@@ -46,7 +46,7 @@ DT_2_STRUCT_FMT = {
     DataType.UINT16: "H",
     DataType.UINT32: "I",
     DataType.UINT64: "Q",
-    DataType.OCTET_STR: DYN_BYTES_FMT,
+    DataType.BYTES: DYN_BYTES_FMT,
     DataType.STR: DYN_STR_FMT,
 }
 
@@ -60,7 +60,7 @@ DT_2_PY_TYPE = {
     DataType.UINT16: "int",
     DataType.UINT32: "int",
     DataType.UINT64: "int",
-    DataType.OCTET_STR: "bytes",
+    DataType.BYTES: "bytes",
     DataType.STR: "str",
 }
 

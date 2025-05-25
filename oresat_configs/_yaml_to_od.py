@@ -35,8 +35,8 @@ class DataType(Enum):
     UINT32 = 0x7
     FLOAT32 = 0x8
     STR = 0x9
-    OCTET_STR = 0xA
-    UNICODE_STR = 0xB
+    BYTES = 0xA
+    UNICODE = 0xB
     DOMAIN = 0xF
     FLOAT64 = 0x11
     INT64 = 0x15
@@ -74,9 +74,9 @@ class DataType(Enum):
             default = False
         elif self.name.startswith("FLOAT"):
             default = 0.0
-        elif self.name in ["STR", "UNICODE_STR"]:
+        elif self.name in ["STR", "UNICODE"]:
             default = ""
-        elif self.name == "OCTET_STR":
+        elif self.name == "BYTES":
             default = b"\x00"
         elif self.name == "DOMAIN":
             default = None
@@ -87,7 +87,7 @@ def _set_var_default(obj: ConfigObject, var: Variable) -> None:
     default = obj.default
     if obj.data_type == "str" and obj.str_length > 1:
         default = " " * obj.str_length
-    elif obj.data_type == "octet_str" and obj.str_length > 1:
+    elif obj.data_type == "bytes" and obj.str_length > 1:
         default = b"\x00" * obj.str_length
     elif default is None:
         default = DataType(var.data_type).default

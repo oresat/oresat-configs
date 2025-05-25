@@ -25,7 +25,7 @@ DATA_TYPE_C_TYPES = {
     DataType.FLOAT32: "float",
     DataType.FLOAT64: "double",
     DataType.STR: "char",
-    DataType.OCTET_STR: "uint8_t",
+    DataType.BYTES: "uint8_t",
     DataType.DOMAIN: "",
 }
 
@@ -49,9 +49,9 @@ def initializer(obj: Variable) -> str:
     data_type = DataType(obj.data_type)
     if data_type == DataType.STR:
         return "{" + ", ".join(f"'{c}'" for c in chain(obj.default, ["\\0"])) + "}"
-    if data_type == DataType.OCTET_STR:
+    if data_type == DataType.BYTES:
         return "{" + ", ".join(f"0x{b:02X}" for b in obj.default) + "}"
-    if data_type == DataType.UNICODE_STR:
+    if data_type == DataType.UNICODE:
         return "{" + ", ".join(f"0x{ord(c):04X}" for c in chain(obj.default, "\0")) + "}"
     if data_type.is_int:
         return f"0x{obj.default:X}"
@@ -101,9 +101,9 @@ def _var_data_type_len(var: Variable) -> int:
     """Get the length of the variable's data in bytes"""
 
     data_type = DataType(var.data_type)
-    if data_type in (DataType.STR, DataType.OCTET_STR):
+    if data_type in (DataType.STR, DataType.BYTES):
         return len(var.default)  # char
-    if data_type == DataType.UNICODE_STR:
+    if data_type == DataType.UNICODE:
         return len(var.default) * 2  # uint16_t
     if data_type == DataType.DOMAIN:
         return 0
@@ -129,9 +129,9 @@ def _var_attr_flags(var: Variable) -> str:
             attrs.append("ODA_TRPDO")
 
     data_type = DataType(var.data_type)
-    if data_type in (DataType.STR, DataType.UNICODE_STR):
+    if data_type in (DataType.STR, DataType.UNICODE):
         attrs.append("ODA_STR")
-    elif data_type in (DataType.DOMAIN, DataType.OCTET_STR) or (data_type.size // 8) > 1:
+    elif data_type in (DataType.DOMAIN, DataType.BYTES) or (data_type.size // 8) > 1:
         attrs.append("ODA_MB")
 
     return " | ".join(attrs)
@@ -143,7 +143,7 @@ def data_orig(index: int, obj: Variable, name: str, arr: str = "") -> str:
     data_type = DataType(obj.data_type)
     if index in _SKIP_INDEXES or data_type == DataType.DOMAIN:
         return "NULL,"
-    if data_type in (DataType.STR, DataType.OCTET_STR, DataType.UNICODE_STR):
+    if data_type in (DataType.STR, DataType.BYTES, DataType.UNICODE):
         return f"&OD_RAM.x{index:X}_{name}[0]{arr},"
     return f"&OD_RAM.x{index:X}_{name}{arr},"
 
@@ -162,9 +162,9 @@ def obj_entry_body(index: int, obj: Variable | Array | Record) -> list[str]:
         c_name = DATA_TYPE_C_TYPES[DataType(first_obj.data_type)]
         if first_obj.data_type == DataType.DOMAIN.value:
             size = "0"
-        elif first_obj.data_type in (DataType.STR.value, DataType.UNICODE_STR.value):
+        elif first_obj.data_type in (DataType.STR.value, DataType.UNICODE.value):
             size = f"sizeof({c_name}[{len(first_obj.default) + 1}])"  # add 1 for '\0'
-        elif first_obj.data_type == DataType.OCTET_STR.value:
+        elif first_obj.data_type == DataType.BYTES.value:
             size = f"sizeof({c_name}[{len(first_obj.default)}])"
         else:
             size = f"sizeof({c_name})"
@@ -286,9 +286,9 @@ def decl_type(obj: Variable, name: str) -> list[str]:
     ctype = DATA_TYPE_C_TYPES[data_type]
     if data_type == DataType.DOMAIN:
         return []  # skip domains
-    if data_type in (DataType.STR, DataType.UNICODE_STR):
+    if data_type in (DataType.STR, DataType.UNICODE):
         return [f"{INDENT4}{ctype} {name}[{len(obj.default) + 1}];"]  # + 1 for '\0'
-    if data_type == DataType.OCTET_STR:
+    if data_type == DataType.BYTES:
         return [f"{INDENT4}{ctype} {name}[{len(obj.default)}];"]
     return [f"{INDENT4}{ctype} {name};"]
 
