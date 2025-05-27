@@ -6,7 +6,7 @@ objects:
       'off': 0
       searching: 1
       locked: 2
-      error: 3
+      error: 0xFF
     access_type: ro
 
   - index: 0x4001
@@ -41,6 +41,7 @@ objects:
         data_type: uint16
         description: gps week number
         access_type: ro
+        high_limit: 1023
 
       - subindex: 0x4
         name: tow
@@ -49,36 +50,43 @@ objects:
         access_type: ro
         scale_factor: 0.01
         unit: s
+        high_limit: 60480000
 
       - subindex: 0x5
         name: latitude
         data_type: int32
         description: latitude
         access_type: ro
-        scale_factor: 0.0000001 # 1e-7
+        scale_factor: 1.0e-7
         unit: deg
+        low_limit: -900000000
+        high_limit: 900000000
 
       - subindex: 0x6
         name: longitude
         data_type: int32
         description: longitude
         access_type: ro
-        scale_factor: 0.0000001 # 1e-7
+        scale_factor: 1.0e-7
         unit: deg
+        low_limit: -1800000000
+        high_limit: 1800000000
 
       - subindex: 0x7
         name: ellipsoid_alt
         data_type: uint32
         description: height above ellipsoid
         access_type: ro
-        unit: cm
+        unit: km
+        scale_factor: 0.00001  # cm to km
 
       - subindex: 0x8
         name: mean_sea_lvl_alt
         data_type: uint32
         description: mean sea level
         access_type: ro
-        unit: cm
+        unit: km
+        scale_factor: 0.00001  # cm to km
 
       - subindex: 0x9
         name: gdop
@@ -120,42 +128,48 @@ objects:
         data_type: int32
         description: ecef x coordinate
         access_type: ro
-        unit: cm
+        unit: km
+        scale_factor: 0.00001  # cm to km
 
       - subindex: 0xf
         name: ecef_y
         data_type: int32
         description: ecef y coordinate
         access_type: ro
-        unit: cm
+        unit: km
+        scale_factor: 0.00001  # cm to km
 
       - subindex: 0x10
         name: ecef_z
         data_type: int32
         description: ecef z coordinate
         access_type: ro
-        unit: cm
+        unit: km
+        scale_factor: 0.00001  # cm to km
 
       - subindex: 0x11
         name: ecef_vx
         data_type: int32
         description: ecef x velocity
         access_type: ro
-        unit: cm/s
+        unit: km/s
+        scale_factor: 0.00001  # cm/s to km/s
 
       - subindex: 0x12
         name: ecef_vy
         data_type: int32
         description: ecef y velocity
         access_type: ro
-        unit: cm/s
+        unit: km/s
+        scale_factor: 0.00001  # cm/s to km/s
 
       - subindex: 0x13
         name: ecef_vz
         data_type: int32
         description: ecef z velocity
         access_type: ro
-        unit: cm/s
+        unit: km/s
+        scale_factor: 0.00001  # cm/s to km/s
 
       - subindex: 0x14
         name: time_since_midnight
@@ -164,10 +178,22 @@ objects:
         access_type: ro
         unit: ms
 
+      - subindex: 0x15
+        name: packet_count
+        data_type: uint32
+        description: number of packet received since boot
+        access_type: ro
+
+      - subindex: 0x16
+        name: last_packet
+        data_type: octet_str
+        description: last packet received
+        access_type: ro
+
 tpdos:
   - num: 3
     fields:
-      -  [skytraq, time_since_midnight]
+      - [skytraq, time_since_midnight]
 
   - num: 4
     fields:
@@ -190,8 +216,9 @@ tpdos:
       - [skytraq, number_of_sv]
       - [skytraq, fix_mode]
       - [time_syncd]
+    event_timer_ms: 1000
 
-  - num: 16 # the time sync TPDO
+  - num: 16  # the time sync TPDO
     fields:
       - [scet]
     sync: 1

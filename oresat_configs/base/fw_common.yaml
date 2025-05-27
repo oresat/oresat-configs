@@ -44,7 +44,7 @@ objects:
         description: oresat configs version
         access_type: const
         default: "0.0.0"
-  
+
       # subindex 0x3 reserved
 
       - subindex: 0x4
@@ -58,24 +58,47 @@ objects:
     name: system
     object_type: record
     subindexes:
-      # subindex 0x1 reserved for reset
+      - subindex: 0x1
+        name: reset
+        data_type: uint8
+        description: reset the app
+        value_descriptions:
+          no_stop: 0
+          soft_reset: 1
+          hard_reset: 2
+          factory_reset: 3
+          poweroff: 4
+        access_type: wo
+
       # subindex 0x2 reserved for storage_percent
       # subindex 0x3 reserved for ram_percent
       # subindex 0x4 reserved for unix_time
-      # subindex 0x5 reserved for uptime
+
+      - subindex: 0x5
+        name: uptime
+        data_type: uint32
+        description: uptime
+        access_type: ro
+        unit: s
+
       # subindex 0x6 reserved for power_cycles
 
       - subindex: 0x7
         name: temperature
         data_type: int8
-        description: the temperature of the processor
+        description: processor temperature
         access_type: ro
         unit: C
 
       - subindex: 0x8
         name: vrefint
-        data_type: uint8
+        description: processor internal voltage reference
+        data_type: uint16
         access_type: ro
+        scale_factor: 0.001
+        unit: V
+
+        # subindex 0x9 reserved for boot_select
 
   # index 0x3004 reserved
   # index 0x3005 reserved

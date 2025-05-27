@@ -12,7 +12,7 @@ from typing import Any, Optional, Union
 
 import canopen
 
-from .. import Consts, OreSatConfig
+from .. import Mission, OreSatConfig
 
 SDO_TRANSFER = "read or write value to a node's object dictionary via SDO transfers"
 
@@ -33,15 +33,15 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         metavar="VALUE",
         nargs="?",
         default="",
-        help="data to write or for only octet/domain data types a path to a file "
-        "(e.g. file:data.bin)",
+        help="Data to write or for only octet/domain data types a path to a file."
+        " (e.g. file:data.bin)",
     )
     parser.add_argument(
         "--oresat",
-        default=Consts.default().arg,
-        choices=[m.arg for m in Consts],
+        default=Mission.default().arg,
+        choices=[m.arg for m in Mission],
         type=lambda x: x.lower().removeprefix("oresat"),
-        help="oresat mission, defaults to %(default)s",
+        help="Oresat Mission. (Default: %(default)s)",
     )
     return parser
 

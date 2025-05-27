@@ -15,13 +15,14 @@ objects:
       beacon: 69
       edl: 70
     access_type: ro
+    default: 66
 
   - index: 0x4001
     name: reset_timeout
     data_type: uint32
     description: the reset system timeout
     access_type: const
-    default: 86400 # 24 hours
+    default: 86400  # 24 hours
     unit: s
 
   - index: 0x4002
@@ -51,7 +52,7 @@ objects:
         data_type: uint32
         description: tx enable timeout
         access_type: const
-        default: 1209600 # 2 weeks
+        default: 2592000  # 30 days
         unit: s
 
       - subindex: 0x3
@@ -80,10 +81,10 @@ objects:
 
       - subindex: 0x3
         name: pre_attempt_timeout
-        data_type: uint8
+        data_type: uint16
         description: timeout before trying to deploy the antennas
         access_type: const
-        default: 300 # 5 minutes
+        default: 300  # 5 minutes
         unit: s
 
       - subindex: 0x4
@@ -177,7 +178,7 @@ objects:
       - subindex: 0x3
         name: rssi
         data_type: int8
-        description: lband rssi of last packet received after lna, filters, and digital channel filter
+        description: lband rssi of last packet received as reported by AX5043
         access_type: ro
         unit: dB
 
@@ -196,7 +197,7 @@ objects:
   - index: 0x4007
     name: uhf
     object_type: record
-    subindexes :
+    subindexes:
       - subindex: 0x1
         name: rx_bytes
         data_type: uint32
@@ -254,7 +255,7 @@ objects:
         data_type: uint8
         description: selected edl crypto key
         access_type: ro
-        high_level: 3
+        high_limit: 3
 
       - subindex: 0x6
         name: sequence_count
@@ -392,6 +393,13 @@ objects:
         description: number of reset attempts for a opd node before it is considered dead
         access_type: rw
         default: 3
+
+      - subindex: 0xd
+        name: uart_node_select
+        data_type: uint8
+        description: select a node to connect to UART or 0 for no node
+        access_type: rw
+        default: 0
 
   - index: 0x400a
     name: beacon
@@ -600,13 +608,13 @@ objects:
           spindown: 4
           detumble: 5
           bbq: 6
-          point: 7 
+          point: 7
           manual: 8
-      
+
       - subindex: 0x2
         name: status
         data_type: uint8
-        description: adcs service status 
+        description: adcs service status
         access_type: ro
         value_descriptions:
           none: 0
@@ -633,23 +641,23 @@ objects:
         default: "{}"
 
 tpdos:
-  - num: 1 # time sync TPDO
+  - num: 1  # time sync TPDO
     fields:
       - [scet]
 
   - num: 2
     fields:
-    - [status]
-    - [tx_control, enable]
-    - [mode]
-    - [adcs_manager, mode]
-    - [adcs_manager, status]
+      - [status]
+      - [tx_control, enable]
+      - [mode]
+      - [adcs_manager, mode]
+      - [adcs_manager, status]
     event_timer_ms: 5000
 
   - num: 3
     fields:
-    - [edl, sequence_count]
-    - [edl, rejected_count]
+      - [edl, sequence_count]
+      - [edl, rejected_count]
     event_timer_ms: 5000
 
   - num: 4

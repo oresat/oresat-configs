@@ -5,8 +5,8 @@ from typing import Any, Optional
 
 import canopen
 
-from .. import Consts, OreSatConfig
-from .._yaml_to_od import OD_DATA_TYPES
+from .. import Mission, OreSatConfig
+from .._yaml_to_od import STR_2_OD_DATA_TYPE
 
 PRINT_OD = "print the object dictionary out to stdout"
 
@@ -19,10 +19,10 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
     parser.description = PRINT_OD
     parser.add_argument(
         "--oresat",
-        default=Consts.default().arg,
-        choices=[m.arg for m in Consts],
+        default=Mission.default().arg,
+        choices=[m.arg for m in Mission],
         type=lambda x: x.lower().removeprefix("oresat"),
-        help="oresat mission, defaults to %(default)s",
+        help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument("card", help="card name; c3, gps, star_tracker_1, etc")
     return parser
@@ -59,7 +59,7 @@ def print_od(args: Optional[Namespace] = None) -> None:
     config = OreSatConfig(args.oresat)
 
     inverted_od_data_types = {}
-    for key, value in OD_DATA_TYPES.items():
+    for key, value in STR_2_OD_DATA_TYPE.items():
         inverted_od_data_types[value] = key
 
     arg_card = args.card.lower().replace("-", "_")

@@ -8,7 +8,7 @@ from typing import Any, Optional
 from tabulate import tabulate
 
 from ..card_info import Card, cards_from_csv
-from ..constants import Consts
+from ..constants import Mission
 
 LIST_CARDS = "list oresat cards, suitable as arguments to other commands"
 
@@ -22,10 +22,10 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
     parser.formatter_class = RawDescriptionHelpFormatter
     parser.add_argument(
         "--oresat",
-        default=Consts.default().arg,
-        choices=[m.arg for m in Consts],
+        default=Mission.default().arg,
+        choices=[m.arg for m in Mission],
         type=lambda x: x.lower().removeprefix("oresat"),
-        help="oresat mission, defaults to %(default)s",
+        help="Oresat Mission. (Default: %(default)s)",
     )
     # I'd like to pull the descriptions directly out of Card but attribute docstrings are discarded
     # and not accessable at runtime.
@@ -65,7 +65,8 @@ def list_cards(args: Optional[Namespace] = None) -> None:
     if args is None:
         args = build_parser(ArgumentParser()).parse_args()
 
-    cards = cards_from_csv(Consts.from_string(args.oresat))
+    with Mission.from_string(args.oresat).cards as path:
+        cards = cards_from_csv(path)
     data: dict[str, list[str]] = defaultdict(list)
     data["name"] = list(cards)
     for card in cards.values():
@@ -76,5 +77,7 @@ def list_cards(args: Optional[Namespace] = None) -> None:
                 value = f"0x{value:02X}" if value else ""
             elif key == "opd_always_on":
                 value = "True" if value else ""
+            elif key in ("common", "config"):
+                continue
             data[key].append(value)
     print(tabulate(data, headers="keys"))

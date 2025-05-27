@@ -26,9 +26,14 @@
   object_type: array
   description: emcy history for device
   generate_subindexes:
+    name: error
     subindexes: fixed_length
-    length: 8  # can be up to 127
+    length: 8  # can be bewteen 1 and 254
     data_type: uint32
+    access_type: ro
+    bit_definitions:
+      additional_info: "31-16"
+      error_code: "15-0"
 
 - index: 0x1005
   name: cob_id_sync
@@ -58,7 +63,7 @@
     can_id: "10-0"
   data_type: uint32
   access_type: rw
-  default: "0x80+$NODE_ID"
+  default: 0x80
 
 - index: 0x1015
   name: inhibit_time_emcy
@@ -66,6 +71,8 @@
   description: inhibit time (in 100 us) for emcy messages
   data_type: uint16
   access_type: rw
+  unit: s
+  scale_factor: 0.0001
 
 - index: 0x1016
   name: consumer_heartbeat_time
@@ -75,7 +82,10 @@
     subindexes: node_ids
     name: node_ids
     data_type: uint32
+    access_type: rw
     default: 1000
+    unit: s
+    scale_factor: 0.001
 
 - index: 0x1017
   name: producer_heartbeat_time
@@ -84,23 +94,25 @@
   data_type: uint16
   access_type: rw
   default: 1000
+  unit: s
+  scale_factor: 0.001
 
 - index: 0x1018
   name: identity
   object_type: record
-  subindexes: 
+  subindexes:
     - subindex: 0x1
       name: vendor_id
       description: manufacturer vendor id set by CiA
       data_type: uint32
       access_type: ro
-    
+
     - subindex: 0x2
       name: product_code
       description: ids a specific type of CANopen devices
       data_type: uint32
       access_type: ro
-    
+
     - subindex: 0x3
       name: revision_number
       bit_definitions:
@@ -108,7 +120,7 @@
         minor: "15-0"
       data_type: uint32
       access_type: ro
-    
+
     - subindex: 0x4
       name: serial_number
       description: unqiue device id for a product group or revision
@@ -121,61 +133,86 @@
   description: highest supported value of the synchronous counter
   data_type: uint8
   access_type: rw
+  high_limit: 240
 
 - index: 0x1200
   name: sdo_server_parameter
   object_type: record
-  subindexes: 
+  subindexes:
     - subindex: 0x1
       name: cob_id_client_to_server
       data_type: uint32
-      access_type: rw
+      access_type: ro
       default: 0x80000000
-    
+      bit_definitions:
+        not_valid: 31
+        dyn: 30
+        frame: 29
+        can_id: "10-0"
+
     - subindex: 0x2
       name: cob_id_server_to_client
       data_type: uint32
-      access_type: rw
+      access_type: ro
       default: 0x80000000
-    
+      bit_definitions:
+        not_valid: 31
+        dyn: 30
+        frame: 29
+        can_id: "10-0"
+
     - subindex: 0x3
       name: node_id_od_sdo_client
-      data_type: uint32
-      access_type: rw
-      default: 1
-    
+      data_type: uint8
+      access_type: ro
+      low_limit: 0x1
+      high_limit: 0x7F
+      default: 0x1
+
 - index: 0x1280
   name: sdo_client_parameter
   object_type: record
-  subindexes: 
+  subindexes:
     - subindex: 0x1
       name: cob_id_client_to_server
       data_type: uint32
       access_type: rw
       default: 0x80000000
-    
+      bit_definitions:
+        not_valid: 31
+        dyn: 30
+        frame: 29
+        can_id: "10-0"
+
     - subindex: 0x2
       name: cob_id_server_to_client
       data_type: uint32
       access_type: rw
       default: 0x80000000
-    
+      bit_definitions:
+        not_valid: 31
+        dyn: 30
+        frame: 29
+        can_id: "10-0"
+
     - subindex: 0x3
-      name: node_id_od_sdo_client
-      data_type: uint32
+      name: node_id_of_sdo_server
+      data_type: uint8
       access_type: rw
-      default: 1
+      low_limit: 0x1
+      high_limit: 0x7F
+      default: 0x1
 
 - index: 0x1023
   name: os_command
   object_type: record
-  subindexes: 
+  subindexes:
     - subindex: 0x1
       name: command
       description: OS command
-      data_type: domain
+      data_type: octet_str
       access_type: rw
-    
+
     - subindex: 0x2
       name: status
       value_descriptions:
@@ -184,15 +221,15 @@
         error_no_reply: 0x02
         error_reply: 0x03
         executing: 0xFF
-      data_type: uint32
+      data_type: uint8
       access_type: ro
-    
+
     - subindex: 0x3
       name: reply
       description: OS command reply
-      data_type: domain
+      data_type: octet_str
       access_type: ro
-    
+
 - index: 0x2010
   name: scet
   object_type: variable

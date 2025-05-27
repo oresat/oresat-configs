@@ -1,11 +1,11 @@
 revision: 0
 ax25:
   dest_callsign: SPACE
-  dest_ssid: 0 # primary station
+  dest_ssid: 0  # primary station
   src_callsign: KJ7SAT
-  src_ssid: 11 # balloons, aircraft, spacecraft, etc
-  control: 0x3 # ui-frame
-  pid: 0xf0 # no L3 protocol
+  src_ssid: 11  # balloons, aircraft, spacecraft, etc
+  control: 0x3  # ui-frame
+  pid: 0xf0  # no L3 protocol
   command: false
   response: true
 fields:

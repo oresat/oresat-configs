@@ -5,15 +5,26 @@ import unittest
 
 import canopen
 
-from oresat_configs import Consts, OreSatConfig
-from oresat_configs._yaml_to_od import OD_DATA_TYPE_SIZE, TPDO_COMM_START, TPDO_PARA_START
+from oresat_configs import Mission, OreSatConfig
+from oresat_configs._yaml_to_od import OD_DATA_TYPES, TPDO_COMM_START, TPDO_PARA_START
+
+INT_MIN_MAX = {
+    canopen.objectdictionary.INTEGER8: (-(2**7), 2**7 - 1),
+    canopen.objectdictionary.INTEGER16: (-(2**15), 2**15 - 1),
+    canopen.objectdictionary.INTEGER32: (-(2**31), 2**31 - 1),
+    canopen.objectdictionary.INTEGER64: (-(2**63), 2**63 - 1),
+    canopen.objectdictionary.UNSIGNED8: (0, 2**8 - 1),
+    canopen.objectdictionary.UNSIGNED16: (0, 2**16 - 1),
+    canopen.objectdictionary.UNSIGNED32: (0, 2**32 - 1),
+    canopen.objectdictionary.UNSIGNED64: (0, 2**64 - 1),
+}
 
 
 class TestConfig(unittest.TestCase):
     """Base class to test a OreSat OD databases."""
 
     def setUp(self) -> None:
-        self.oresatid = Consts.ORESAT0
+        self.oresatid = Mission.ORESAT0
         self.config = OreSatConfig(self.oresatid)
 
     def test_tpdo_sizes(self) -> None:
@@ -45,7 +56,7 @@ class TestConfig(unittest.TestCase):
                         mapped_obj.pdo_mappable,
                         f"{self.oresatid.name} {name} {mapped_obj.name} is not pdo mappable",
                     )
-                    size += OD_DATA_TYPE_SIZE[mapped_obj.data_type]
+                    size += OD_DATA_TYPES[mapped_obj.data_type].size
                 self.assertLessEqual(
                     size, 64, f"{self.oresatid.name} {name} TPDO{i + 1} is more than 64 bits"
                 )
@@ -77,7 +88,7 @@ class TestConfig(unittest.TestCase):
                     dynamic_len_data_types,
                     f"{self.oresatid.name} {obj.name} is a dynamic length data type",
                 )
-                length += OD_DATA_TYPE_SIZE[obj.data_type] // 8  # bits to bytes
+                length += OD_DATA_TYPES[obj.data_type].size // 8  # bits to bytes
 
         # AX.25 payload max length = 255
         # CRC32 length = 4
@@ -101,7 +112,7 @@ class TestConfig(unittest.TestCase):
         """Test that a variable is valid."""
 
         self.assertIsInstance(obj, canopen.objectdictionary.Variable)
-        self.assertIn(obj.data_type, OD_DATA_TYPE_SIZE.keys())
+        self.assertIn(obj.data_type, OD_DATA_TYPES.keys())
         self.assertIn(obj.access_type, ["ro", "wo", "rw", "rwr", "rww", "const"])
         self.assertIsInstance(obj.data_type, int)
         self._test_snake_case(obj.name)
@@ -123,6 +134,12 @@ class TestConfig(unittest.TestCase):
                 obj.default,
                 int,
                 f"{node_name} object 0x{obj.index:X} 0x{obj.subindex:02X} was not a int",
+            )
+            int_min, int_max = INT_MIN_MAX[obj.data_type]
+            self.assertTrue(
+                int_min <= obj.default <= int_max,
+                f"{node_name} object 0x{obj.index:X} 0x{obj.subindex:02X} default of {obj.default}"
+                f" not between {int_min} and {int_max}",
             )
         elif obj.data_type in canopen.objectdictionary.FLOAT_TYPES:
             self.assertIsInstance(

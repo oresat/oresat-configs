@@ -124,7 +124,7 @@ objects:
       - subindex: 0x8
         name: moving_avg_samples
         data_type: uint8
-        description: the number of reading used to calcuate the moving average to determine if saturated
+        description: the number of samples used in the moving average to determine if saturated
         access_type: rw
         default: 4
 
@@ -139,7 +139,9 @@ objects:
       - subindex: 0xa
         name: cooldown_temperature
         data_type: int8
-        description: once saturated the TEC controller cannot be enable until the camera temperature is greater this value
+        description: >
+          once saturated the TEC controller cannot be enabled until the camera temperature is
+          greater than this value
         access_type: rw
         default: 40
         unit: C

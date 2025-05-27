@@ -22,6 +22,7 @@ from .scripts import (
     gen_dbc,
     gen_dcf,
     gen_fw_files,
+    gen_kaitai,
     gen_xtce,
     list_cards,
     pdo,
@@ -43,13 +44,14 @@ _SCRIPTS = [
     sdo_transfer,
     pdo,
     gen_dcf,
+    gen_kaitai,
     gen_xtce,
     gen_fw_files,
     gen_dbc,
 ]
 
 
-def oresat_configs():
+def oresat_configs() -> None:
     """Entry point for the top level script
 
     Used in pyproject.toml, for generating the oresat-configs installed script

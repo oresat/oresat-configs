@@ -20,6 +20,7 @@ dependencies = [
     "canopen",
     "dacite",
     "pyyaml",
+    "tabulate",
 ]
 dynamic = ["version"]
 
@@ -29,6 +30,7 @@ oresat-gen-fw-files = "oresat_configs.scripts.gen_fw_files:gen_fw_files"
 oresat-gen-dcf = "oresat_configs.scripts.gen_dcf:gen_dcf"
 oresat-print-od = "oresat_configs.scripts.print_od:print_od"
 oresat-sdo-transfer = "oresat_configs.scripts.sdo_transfer:sdo_transfer"
+oresat-gen-kaitai = "oresat_configs.scripts.gen_kaitai:gen_kaitai"
 oresat-gen-xtce = "oresat_configs.scripts.gen_xtce:gen_xtce"
 
 [tool.setuptools.packages.find]
@@ -74,7 +76,7 @@ path = "*/__init__.py"
 ignore = "W0611,R0903"
 
 [[tool.mypy.overrides]]
-module = "canopen,canopen.objectdictionary"
+module = "canopen,canopen.objectdictionary,canopen.objectdictionary.datatypes"
 ignore_missing_imports = true
 
 [tool.isort]

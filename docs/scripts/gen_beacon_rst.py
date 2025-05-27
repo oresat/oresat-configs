@@ -10,7 +10,7 @@ sys.path.insert(0, _FILE_PATH)
 import bitstring
 import canopen
 
-from oresat_configs import Consts, OreSatConfig
+from oresat_configs import Mission, OreSatConfig
 
 OD_DATA_TYPES = {
     canopen.objectdictionary.BOOLEAN: "bool",
@@ -170,7 +170,7 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
         if obj.name in ["start_chars", "revision"]:
             desc += f": {obj.value}\n"
         if obj.name == "satellite_id":
-            sat = Consts.from_id(obj.value)
+            sat = Mission.from_id(obj.value)
             desc += f": {sat.id}\n"
         if obj.value_descriptions:
             desc += "\n\nValue Descriptions:\n"
@@ -206,7 +206,7 @@ def gen_beacon_rst_files() -> None:
     """Generate all beacon rst files."""
 
     parent_dir = os.path.dirname(os.path.abspath(__file__ + "/.."))
-    for mission in Consts:
+    for mission in Mission:
         mission_name = mission.name.lower()
         url = (
             f"https://github.com/oresat/oresat-configs/blob/master/oresat_configs/{mission_name}"

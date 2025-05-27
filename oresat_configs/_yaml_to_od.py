@@ -1,7 +1,8 @@
 """Convert OreSat configs to ODs."""
 
-import os
+from collections import namedtuple
 from copy import deepcopy
+from importlib import abc, resources
 from typing import Union
 
 import canopen
@@ -10,20 +11,20 @@ from canopen.objectdictionary import Array, Record, Variable
 from dacite import from_dict
 from yaml import CLoader, load
 
-from .base import ConfigPaths
+from . import base
 from .beacon_config import BeaconConfig
 from .card_config import CardConfig, ConfigObject, IndexObject, SubindexObject
 from .card_info import Card
-from .constants import Consts, __version__
+from .constants import Mission, __version__
 
-STD_OBJS_FILE_NAME = f"{os.path.dirname(os.path.abspath(__file__))}/standard_objects.yaml"
+STD_OBJS_FILE_NAME = resources.files("oresat_configs") / "standard_objects.yaml"
 
 RPDO_COMM_START = 0x1400
 RPDO_PARA_START = 0x1600
 TPDO_COMM_START = 0x1800
 TPDO_PARA_START = 0x1A00
 
-OD_DATA_TYPES = {
+STR_2_OD_DATA_TYPE = {
     "bool": canopen.objectdictionary.BOOLEAN,
     "int8": canopen.objectdictionary.INTEGER8,
     "int16": canopen.objectdictionary.INTEGER16,
@@ -40,38 +41,23 @@ OD_DATA_TYPES = {
     "domain": canopen.objectdictionary.DOMAIN,
 }
 
-OD_DATA_TYPE_SIZE = {
-    canopen.objectdictionary.BOOLEAN: 8,
-    canopen.objectdictionary.INTEGER8: 8,
-    canopen.objectdictionary.INTEGER16: 16,
-    canopen.objectdictionary.INTEGER32: 32,
-    canopen.objectdictionary.INTEGER64: 64,
-    canopen.objectdictionary.UNSIGNED8: 8,
-    canopen.objectdictionary.UNSIGNED16: 16,
-    canopen.objectdictionary.UNSIGNED32: 32,
-    canopen.objectdictionary.UNSIGNED64: 64,
-    canopen.objectdictionary.REAL32: 32,
-    canopen.objectdictionary.REAL64: 64,
-    canopen.objectdictionary.VISIBLE_STRING: 0,
-    canopen.objectdictionary.OCTET_STRING: 0,
-    canopen.objectdictionary.DOMAIN: 0,
-}
+OdDataTypeInfo = namedtuple("OdDataTypeInfo", ("default", "size", "low_limit", "high_limit"))
 
-OD_DEFAULTS = {
-    canopen.objectdictionary.BOOLEAN: False,
-    canopen.objectdictionary.INTEGER8: 0,
-    canopen.objectdictionary.INTEGER16: 0,
-    canopen.objectdictionary.INTEGER32: 0,
-    canopen.objectdictionary.INTEGER64: 0,
-    canopen.objectdictionary.UNSIGNED8: 0,
-    canopen.objectdictionary.UNSIGNED16: 0,
-    canopen.objectdictionary.UNSIGNED32: 0,
-    canopen.objectdictionary.UNSIGNED64: 0,
-    canopen.objectdictionary.REAL32: 0.0,
-    canopen.objectdictionary.REAL64: 0.0,
-    canopen.objectdictionary.VISIBLE_STRING: "",
-    canopen.objectdictionary.OCTET_STRING: b"",
-    canopen.objectdictionary.DOMAIN: None,
+OD_DATA_TYPES = {
+    canopen.objectdictionary.BOOLEAN: OdDataTypeInfo(False, 8, None, None),
+    canopen.objectdictionary.INTEGER8: OdDataTypeInfo(0, 8, -(2**8) // 2, 2**8 // 2 - 1),
+    canopen.objectdictionary.INTEGER16: OdDataTypeInfo(0, 16, -(2**16) // 2, 2**16 // 2 - 1),
+    canopen.objectdictionary.INTEGER32: OdDataTypeInfo(0, 16, -(2**32) // 2, 2**32 // 2 - 1),
+    canopen.objectdictionary.INTEGER64: OdDataTypeInfo(0, 16, -(2**64) // 2, 2**64 // 2 - 1),
+    canopen.objectdictionary.UNSIGNED8: OdDataTypeInfo(0, 8, 0, 2**8 - 1),
+    canopen.objectdictionary.UNSIGNED16: OdDataTypeInfo(0, 16, 0, 2**16 - 1),
+    canopen.objectdictionary.UNSIGNED32: OdDataTypeInfo(0, 32, 0, 2**32 - 1),
+    canopen.objectdictionary.UNSIGNED64: OdDataTypeInfo(0, 64, 0, 2**64 - 1),
+    canopen.objectdictionary.REAL32: OdDataTypeInfo(0.0, 32, None, None),
+    canopen.objectdictionary.REAL64: OdDataTypeInfo(0.0, 64, None, None),
+    canopen.objectdictionary.VISIBLE_STRING: OdDataTypeInfo("", 0, None, None),
+    canopen.objectdictionary.OCTET_STRING: OdDataTypeInfo(b"", 0, None, None),
+    canopen.objectdictionary.DOMAIN: OdDataTypeInfo(None, 0, None, None),
 }
 
 DYNAMIC_LEN_DATA_TYPES = [
@@ -88,7 +74,7 @@ def _set_var_default(obj: ConfigObject, var: Variable) -> None:
     if obj.data_type == "octet_str":
         default = b"\x00" * obj.length
     elif default is None:
-        default = OD_DEFAULTS[var.data_type]
+        default = OD_DATA_TYPES[var.data_type].default
     elif var.data_type in canopen.objectdictionary.INTEGER_TYPES and isinstance(default, str):
         # remove node id
         if "+$NODE_ID" in default:
@@ -104,23 +90,39 @@ def _set_var_default(obj: ConfigObject, var: Variable) -> None:
     var.default = default
 
 
+def _parse_bit_definitions(obj: Union[IndexObject, SubindexObject]) -> dict[str, list[int]]:
+    bit_defs = {}
+    for name, bits in obj.bit_definitions.items():
+        if isinstance(bits, int):
+            bit_defs[name] = [bits]
+        elif isinstance(bits, list):
+            bit_defs[name] = bits
+        elif isinstance(bits, str) and "-" in bits:
+            low, high = sorted([int(i) for i in bits.split("-")])
+            bit_defs[name] = list(range(low, high + 1))
+    return bit_defs
+
+
 def _make_var(obj: Union[IndexObject, SubindexObject], index: int, subindex: int = 0) -> Variable:
     var = canopen.objectdictionary.Variable(obj.name, index, subindex)
     var.access_type = obj.access_type
     var.description = obj.description
-    for name, bits in obj.bit_definitions.items():
-        var.add_bit_definition(name, bits)
+    var.bit_definitions = _parse_bit_definitions(obj)
     for name, value in obj.value_descriptions.items():
         var.add_value_description(value, name)
     var.unit = obj.unit
     if obj.scale_factor != 1:
         var.factor = obj.scale_factor
-    var.data_type = OD_DATA_TYPES[obj.data_type]
+    var.data_type = STR_2_OD_DATA_TYPE[obj.data_type]
     _set_var_default(obj, var)
     if var.data_type not in DYNAMIC_LEN_DATA_TYPES:
         var.pdo_mappable = True
-    var.high_limit = obj.high_limit
-    var.low_limit = obj.low_limit
+    if obj.value_descriptions:
+        var.max = obj.high_limit or max(obj.value_descriptions.values())
+        var.min = obj.low_limit or min(obj.value_descriptions.values())
+    else:
+        var.max = obj.high_limit
+        var.min = obj.low_limit
     return var
 
 
@@ -135,9 +137,7 @@ def _make_rec(obj: IndexObject) -> Record:
 
     for sub_obj in obj.subindexes:
         if sub_obj.subindex in rec.subindices:
-            raise ValueError(
-                f"subindex 0x{sub_obj.subindex:X} aleady in record at record 0x{index:X}"
-            )
+            raise ValueError(f"subindex 0x{sub_obj.subindex:X} already in record")
         var = _make_var(sub_obj, index, sub_obj.subindex)
         rec.add_member(var)
         var0.default = sub_obj.subindex
@@ -156,37 +156,47 @@ def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
 
     subindexes = []
     names = []
-    generate_subindexes = obj.generate_subindexes
-    if generate_subindexes is None:
-        raise ValueError("IndexObject for array missing generate_subindexes: {obj}")
+    gen_sub = obj.generate_subindexes
+    if gen_sub is not None:
+        if gen_sub.subindexes == "fixed_length":
+            subindexes = list(range(1, gen_sub.length + 1))
+            names = [f"{gen_sub.name}_{subindex}" for subindex in subindexes]
+        elif gen_sub.subindexes == "node_ids":
+            for name, sub in node_ids.items():
+                if sub == 0:
+                    continue  # a node_id of 0 is flag for not on can bus
+                names.append(name)
+                subindexes.append(sub)
 
-    if generate_subindexes.subindexes == "fixed_length":
-        subindexes = list(range(1, generate_subindexes.length + 1))
-        names = [obj.name + f"_{subindex}" for subindex in subindexes]
-    elif generate_subindexes.subindexes == "node_ids":
-        for name, sub in node_ids.items():
-            if sub == 0:
-                continue  # a node_id of 0 is flag for not on can bus
-            names.append(name)
-            subindexes.append(sub)
-
-    for subindex, name in zip(subindexes, names):
-        if subindex in arr.subindices:
-            raise ValueError(f"subindex 0x{subindex:X} aleady in record at array 0x{index:X}")
-        var = canopen.objectdictionary.Variable(name, index, subindex)
-        var.access_type = generate_subindexes.access_type
-        var.data_type = OD_DATA_TYPES[generate_subindexes.data_type]
-        for name, bits in generate_subindexes.bit_definitions.items():
-            var.add_bit_definition(name, bits)
-        for name, value in generate_subindexes.value_descriptions.items():
-            var.add_value_description(value, name)
-        var.unit = generate_subindexes.unit
-        var.factor = generate_subindexes.scale_factor
-        _set_var_default(generate_subindexes, var)
-        if var.data_type not in DYNAMIC_LEN_DATA_TYPES:
-            var.pdo_mappable = True
-        arr.add_member(var)
-        var0.default = subindex
+        for subindex, name in zip(subindexes, names):
+            if subindex in arr.subindices:
+                raise ValueError(f"subindex 0x{subindex:X} already in array")
+            var = canopen.objectdictionary.Variable(name, index, subindex)
+            var.access_type = gen_sub.access_type
+            var.data_type = STR_2_OD_DATA_TYPE[gen_sub.data_type]
+            var.bit_definitions = _parse_bit_definitions(gen_sub)
+            for name, value in gen_sub.value_descriptions.items():
+                var.add_value_description(value, name)
+            var.unit = gen_sub.unit
+            var.factor = gen_sub.scale_factor
+            if obj.value_descriptions:
+                var.max = gen_sub.high_limit or max(gen_sub.value_descriptions.values())
+                var.min = gen_sub.low_limit or min(gen_sub.value_descriptions.values())
+            else:
+                var.max = gen_sub.high_limit
+                var.min = gen_sub.low_limit
+            _set_var_default(gen_sub, var)
+            if var.data_type not in DYNAMIC_LEN_DATA_TYPES:
+                var.pdo_mappable = True
+            arr.add_member(var)
+            var0.default = subindex
+    else:
+        for sub_obj in obj.subindexes:
+            if sub_obj.subindex in arr.subindices:
+                raise ValueError(f"subindex 0x{sub_obj.subindex:X} already in array")
+            var = _make_var(sub_obj, index, sub_obj.subindex)
+            arr.add_member(var)
+            var0.default = sub_obj.subindex
 
     return arr
 
@@ -198,7 +208,7 @@ def _add_objects(
 
     for obj in objects:
         if obj.index in od.indices:
-            raise ValueError(f"index 0x{obj.index:X} aleady in OD")
+            raise ValueError(f"index 0x{obj.index:X} already in OD")
 
         if obj.object_type == "variable":
             var = _make_var(obj, obj.index)
@@ -250,7 +260,7 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
             mapped_subindex = mapped_obj.subindex
             value = mapped_obj.index << 16
             value += mapped_subindex << 8
-            value += OD_DATA_TYPE_SIZE[mapped_obj.data_type]
+            value += OD_DATA_TYPES[mapped_obj.data_type].size
             var.default = value
             map_rec.add_member(var)
 
@@ -409,6 +419,8 @@ def _add_rpdo_data(
             var.factor = tpdo_mapped_obj.factor
             var.bit_definitions = deepcopy(tpdo_mapped_obj.bit_definitions)
             var.value_descriptions = deepcopy(tpdo_mapped_obj.value_descriptions)
+            var.max = tpdo_mapped_obj.max
+            var.min = tpdo_mapped_obj.min
             var.pdo_mappable = True
             rpdo_mapped_rec.add_member(var)
 
@@ -427,7 +439,7 @@ def _add_rpdo_data(
             rpdo_mapped_obj = rpdo_node_od[rpdo_mapped_index]
         else:
             rpdo_mapped_obj = rpdo_node_od[rpdo_mapped_index][rpdo_mapped_subindex]
-        value += OD_DATA_TYPE_SIZE[rpdo_mapped_obj.data_type]
+        value += OD_DATA_TYPES[rpdo_mapped_obj.data_type].size
         var.default = value
         rpdo_mapping_rec.add_member(var)
 
@@ -464,11 +476,11 @@ def _add_all_rpdo_data(
 
 
 def _load_std_objs(
-    file_path: str, node_ids: dict[str, int]
+    file_path: abc.Traversable, node_ids: dict[str, int]
 ) -> dict[str, Union[Variable, Record, Array]]:
     """Load the standard objects."""
 
-    with open(file_path, "r") as f:
+    with resources.as_file(file_path) as path, path.open() as f:
         std_objs_raw = load(f, Loader=CLoader)
 
     std_objs = {}
@@ -497,6 +509,8 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
             if obj.object_type == "variable":
                 obj2.data_type = obj.data_type
                 obj2.access_type = obj.access_type
+                obj2.high_limit = obj.high_limit
+                obj2.low_limit = obj.low_limit
             else:
                 for sub_obj in obj.subindexes:
                     sub_overlayed = False
@@ -505,6 +519,8 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
                             sub_obj2.name = sub_obj.name
                             sub_obj2.data_type = sub_obj.data_type
                             sub_obj2.access_type = sub_obj.access_type
+                            sub_obj2.high_limit = sub_obj.high_limit
+                            sub_obj2.low_limit = sub_obj.low_limit
                             overlayed = True
                             sub_overlayed = True
                             break  # obj was found, search for next one
@@ -542,17 +558,22 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
             card_config.rpdos.append(deepcopy(overlay_rpdo))
 
 
-def _load_configs(config_paths: ConfigPaths) -> dict[str, CardConfig]:
+def _load_configs(
+    config_paths: dict[str, Card], overlays: dict[str, abc.Traversable]
+) -> dict[str, CardConfig]:
     """Generate all ODs for a OreSat mission."""
 
     configs: dict[str, CardConfig] = {}
 
-    for name, paths in config_paths.items():
-        if paths is None:
+    for name, card in config_paths.items():
+        if card.config is None:
             continue
 
-        card_config = CardConfig.from_yaml(paths[0])
-        common_config = CardConfig.from_yaml(paths[1])
+        with resources.as_file(card.config) as path:
+            card_config = CardConfig.from_yaml(path)
+
+        with resources.as_file(card.common) as path:
+            common_config = CardConfig.from_yaml(path)
 
         conf = CardConfig()
         conf.std_objects = list(set(common_config.std_objects + card_config.std_objects))
@@ -564,8 +585,13 @@ def _load_configs(config_paths: ConfigPaths) -> dict[str, CardConfig]:
         else:
             conf.tpdos = common_config.tpdos + card_config.tpdos
 
-        if len(paths) > 2:
-            overlay_config = CardConfig.from_yaml(paths[2])
+        if card.base in overlays:
+            with resources.as_file(overlays[card.base]) as path:
+                overlay_config = CardConfig.from_yaml(path)
+            # because conf is cached by CardConfig, if multiple missions are loaded, the cached
+            # version should not be modified because the changes will persist to later loaded
+            # missions.
+            conf = deepcopy(conf)
             overlay_configs(conf, overlay_config)
 
         configs[name] = conf
@@ -574,7 +600,7 @@ def _load_configs(config_paths: ConfigPaths) -> dict[str, CardConfig]:
 
 
 def _gen_od_db(
-    mission: Consts,
+    mission: Mission,
     cards: dict[str, Card],
     beacon_def: BeaconConfig,
     configs: dict[str, CardConfig],
@@ -621,7 +647,7 @@ def _gen_od_db(
         # set specific obj defaults
         od["versions"]["configs_version"].default = __version__
         od["satellite_id"].default = mission.id
-        for sat in Consts:
+        for sat in Mission:
             od["satellite_id"].value_descriptions[sat.id] = sat.name.lower()
         if name == "c3":
             od["beacon"]["revision"].default = beacon_def.revision
@@ -662,11 +688,13 @@ def _gen_c3_fram_defs(c3_od: ObjectDictionary, config: CardConfig) -> list[Varia
     fram_objs = []
 
     for fields in config.fram:
+        obj = None
         if len(fields) == 1:
             obj = c3_od[fields[0]]
         elif len(fields) == 2:
             obj = c3_od[fields[0]][fields[1]]
-        fram_objs.append(obj)
+        if obj is not None:
+            fram_objs.append(obj)
 
     return fram_objs
 
@@ -677,16 +705,18 @@ def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> li
     beacon_objs = []
 
     for fields in beacon_def.fields:
+        obj = None
         if len(fields) == 1:
             obj = c3_od[fields[0]]
         elif len(fields) == 2:
             obj = c3_od[fields[0]][fields[1]]
-        beacon_objs.append(obj)
+        if obj is not None:
+            beacon_objs.append(obj)
 
     return beacon_objs
 
 
-def _gen_fw_base_od(mission: Consts, config_path: str) -> canopen.ObjectDictionary:
+def _gen_fw_base_od(mission: Mission) -> canopen.ObjectDictionary:
     """Generate all ODs for a OreSat mission."""
 
     od = canopen.ObjectDictionary()
@@ -708,7 +738,8 @@ def _gen_fw_base_od(mission: Consts, config_path: str) -> canopen.ObjectDictiona
     od.device_information.nr_of_TXPDO = 0
     od.device_information.LSS_supported = False
 
-    config = CardConfig.from_yaml(config_path)
+    with resources.as_file(resources.files(base) / "fw_common.yaml") as path:
+        config = CardConfig.from_yaml(path)
 
     _add_objects(od, config.objects, {})
 

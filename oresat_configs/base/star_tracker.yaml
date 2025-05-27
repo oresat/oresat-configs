@@ -121,7 +121,7 @@ objects:
         data_type: uint8
         description: percentage of pixels must be above lower bound
         access_type: rw
-        upper_limit: 100
+        high_limit: 100
 
       - subindex: 0x4
         name: upper_bound
@@ -134,7 +134,7 @@ objects:
         data_type: uint8
         description: percentage of pixels must be above upper bound
         access_type: rw
-        upper_limit: 100
+        high_limit: 100
 
 tpdos:
   - num: 3

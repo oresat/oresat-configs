@@ -69,6 +69,7 @@ objects:
         data_type: uint8
         description: reset the app
         value_descriptions:
+          no_stop: 0
           soft_reset: 1
           hard_reset: 2
           factory_reset: 3
@@ -80,7 +81,7 @@ objects:
         data_type: uint8
         description: the current storage percent used
         access_type: ro
-        high_level: 100
+        high_limit: 100
         unit: "%"
 
       - subindex: 0x3
@@ -88,7 +89,7 @@ objects:
         data_type: uint8
         description: the current ram percent used
         access_type: ro
-        high_level: 100
+        high_limit: 100
         unit: "%"
 
       - subindex: 0x4
@@ -113,7 +114,7 @@ objects:
 
       # subindex 0x7 reserved for temperature
       # subindex 0x8 reserved for vrefint
-      
+
       - subindex: 0x9
         name: boot_select
         data_type: uint8
@@ -295,4 +296,4 @@ tpdos:
 rpdos:
   - num: 1
     card: c3
-    tpdo_num: 1 # the time sync TPDO
+    tpdo_num: 1  # the time sync TPDO

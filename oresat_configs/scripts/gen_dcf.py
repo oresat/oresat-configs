@@ -7,7 +7,7 @@ from typing import Any, Optional
 import canopen
 from canopen.objectdictionary import Variable
 
-from .. import Consts, OreSatConfig
+from .. import Mission, OreSatConfig
 
 GEN_DCF = "generate DCF file for OreSat node(s)"
 
@@ -20,10 +20,10 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
     parser.description = GEN_DCF
     parser.add_argument(
         "--oresat",
-        default=Consts.default().arg,
-        choices=[m.arg for m in Consts],
+        default=Mission.default().arg,
+        choices=[m.arg for m in Mission],
         type=lambda x: x.lower().removeprefix("oresat"),
-        help="oresat mission, defaults to %(default)s",
+        help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument("card", help="card name; all, c3, gps, star_tracker_1, etc")
     parser.add_argument("-d", "--dir-path", default=".", help='directory path; defautl "."')
@@ -199,6 +199,8 @@ def _variable_lines(variable: Variable, index: int, subindex: Optional[int] = No
         if variable.data_type == canopen.objectdictionary.OCTET_STRING:
             tmp = variable.default.hex(sep=" ")
             lines.append(f"DefaultValue={tmp}")
+        elif variable.data_type == canopen.objectdictionary.BOOLEAN:
+            lines.append(f"DefaultValue={int(variable.default)}")
         else:
             lines.append(f"DefaultValue={variable.default}")
     if variable.pdo_mappable:  # optional

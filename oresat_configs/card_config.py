@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import cache
+from pathlib import Path
 from typing import Any, Optional, Union
 
 from dacite import from_dict
@@ -16,7 +17,7 @@ class ConfigObject:
 
     data_type: str = "uint32"
     """Data type of the object."""
-    length: int = 0
+    length: int = 1
     """Length of an octet string object (only used when `data_type` is set to ``"octet_str"``)."""
     access_type: str = "rw"
     """
@@ -31,16 +32,17 @@ class ConfigObject:
     bit_definitions: dict[str, Union[int, str]] = field(default_factory=dict)
     """Optional: Can be used to define bitfield of an unsigned integer data types."""
     unit: str = ""
-    """Optional unit for the object."""
+    """Optional engineering unit for the object."""
     scale_factor: float = 1
-    """Can be used to scale a integer value to a float."""
+    """Can be used to scale a integer value to a engineering (float) value."""
     low_limit: Optional[int] = None
     """
-    The lower limit for value. No need to set this if it limit is the lower limit of the data type.
+    The lower raw limit for value. No need to set this if it limit is the lower limit of the data
+    type.
     """
     high_limit: Optional[int] = None
     """
-    The higher limit for value. No need to set this if it limit is the higher limit of the data
+    The higher raw limit for value. No need to set this if it limit is the higher limit of the data
     type.
     """
 
@@ -54,20 +56,55 @@ class GenerateSubindex(ConfigObject):
 
     .. code-block:: yaml
 
-        subindexes: node_ids
-        names: node_ids
-        data_type: uint8
-        access_type: ro
-        value_descriptions:
-          0: "OFF"
-          1: "BOOT"
-          2: "ON"
-          3: "ERROR"
-          4: "NOT_FOUND"
-          0xFF: "DEAD"
+      - index: 0x4000
+        name: my_array
+        object_type: array
+        generate_subindexes:
+            subindexes: fixed_length
+            name: item
+            length: 10
+            data_type: uint16
+            access_type: ro
+            unit: C
+            scale_factor: 0.001
+
+    will generate the equivalent of
+
+    .. code-block:: yaml
+
+      - index: 0x4000
+        name: my_array
+        object_type: array
+        subindexes:
+        generate_subindexes:
+        - subindex: 1
+          name: item_1
+          data_type: uint16
+          access_type: ro
+          unit: C
+          scale_factor: 0.001
+        - subindex: 2
+          name: item_2
+          data_type: uint16
+          access_type: ro
+          unit: C
+          scale_factor: 0.001
+        ...
+        - subindex: 9
+          name: item_9
+          data_type: uint16
+          access_type: ro
+          unit: C
+          scale_factor: 0.001
+        - subindex: 10
+          name: item_10
+          data_type: uint16
+          access_type: ro
+          unit: C
+          scale_factor: 0.001
     """
 
-    names: str = ""
+    name: str = ""
     """Names of objects to generate."""
     subindexes: Union[str, int] = 0
     """Subindexes of objects to generate."""
@@ -233,9 +270,9 @@ class CardConfig:
 
     @classmethod
     @cache
-    def from_yaml(cls, config_path: str) -> CardConfig:
+    def from_yaml(cls, config_path: Path) -> CardConfig:
         """Load a card YAML config file."""
 
-        with open(config_path, "r") as f:
+        with config_path.open() as f:
             config_raw = load(f, Loader=CLoader)
         return from_dict(data_class=cls, data=config_raw)

@@ -5,7 +5,7 @@ from typing import Optional
 
 from canopen.objectdictionary import REAL32, REAL64, UNSIGNED_TYPES, Variable
 
-from .. import Consts, OreSatConfig, __version__
+from .. import Mission, OreSatConfig, __version__
 
 GEN_DBC = "generate dbc file for SavvyCAN"
 
@@ -14,7 +14,7 @@ INDENT4 = " " * 4
 
 VECTOR = "Vector__XXX"  # flag for default, any, all devices
 
-CANOPEN_STATES = {
+HB_STATES = {
     0x00: "boot_up",
     0x04: "stopped",
     0x05: "operational",
@@ -113,6 +113,11 @@ SDO_ABORT_CODES = {
     0x0800_0024: "no_data_available",
 }
 
+RPDO_COMMS_INDEX_START = 0x1400
+RPDO_MAP_INDEX_START = 0x1600
+TPDO_COMMS_INDEX_START = 0x1800
+TPDO_MAP_INDEX_START = 0x1A00
+
 
 def build_parser(parser: ArgumentParser) -> ArgumentParser:
     """Configures an ArgumentParser suitable for this script.
@@ -122,10 +127,10 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
     parser.description = GEN_DBC
     parser.add_argument(
         "--oresat",
-        default=Consts.default().arg,
-        choices=[m.arg for m in Consts],
+        default=Mission.default().arg,
+        choices=[m.arg for m in Mission],
         type=lambda x: x.lower().removeprefix("oresat"),
-        help="oresat mission, defaults to %(default)s",
+        help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument("-d", "--dir-path", default=".", help='directory path; default "."')
     return parser
@@ -233,19 +238,26 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
         lines.append("")
         enums.append((cob_id, "emcy_error_code", EMCY_ERROR_CODES))
 
-        # TPDOs
+        # PDOs
         for param_index in od:
-            if param_index < 0x1800 or param_index >= 0x1A00:
+            if param_index >= RPDO_COMMS_INDEX_START and param_index < RPDO_MAP_INDEX_START:
+                pdo = "rpdo"
+                comms_index_start = RPDO_COMMS_INDEX_START
+            elif param_index >= TPDO_COMMS_INDEX_START and param_index < TPDO_MAP_INDEX_START:
+                pdo = "tpdo"
+                comms_index_start = TPDO_COMMS_INDEX_START
+            else:
                 continue
 
-            tpdo_lines = []
+            pdo_lines = []
             mapping_index = param_index + 0x200
-            tpdo = param_index - 0x1800 + 1
+            num = param_index - comms_index_start + 1
             cob_id = od[param_index][1].value
             sb = 0
 
-            if name == "gps" and cob_id == 0x181:
-                continue  # time sync tpdo, both c3 and gps can send this, skip for gps
+            pdos = 12 if name == "c3" else 16
+            if cob_id & 0x7F not in [od.node_id + i for i in range(pdos // 4)]:
+                continue  # PDO for another node
 
             for subindex in od[mapping_index].subindices:
                 if subindex == 0:
@@ -268,7 +280,7 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
                     sign = "+" if obj.data_type in UNSIGNED_TYPES else "-"
                     low = obj.min if obj.min is not None else 0
                     high = obj.max if obj.max is not None else 0
-                    tpdo_lines.append(
+                    pdo_lines.append(
                         f"{INDENT3}SG_ {signal} : {sb}|{mapped_size}@1{sign} ({obj.factor},0) "
                         f'[{low}|{high}] "{obj.unit}" {VECTOR}'
                     )
@@ -285,7 +297,7 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
                 for n, bits in obj.bit_definitions.items():
                     n_signal = f"{signal}_{n.lower()}"
                     bits = [bits] if isinstance(bits, int) else bits
-                    tpdo_lines.append(
+                    pdo_lines.append(
                         f"{INDENT3}SG_ {n_signal} : {sb + max(bits)}|{len(bits)}@1+ (1,0) "
                         f'[0|0] "" {VECTOR}'
                     )
@@ -295,8 +307,8 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
                     enums.append((cob_id, signal, obj.value_descriptions))
 
             size = sb // 8
-            lines.append(f"BO_ {cob_id} {name}_tpdo_{tpdo}: {size} {name}")
-            lines += tpdo_lines
+            lines.append(f"BO_ {cob_id} {name}_{pdo}_{num}: {size} {name}")
+            lines += pdo_lines
             lines.append("")
 
         # SDOs (useless for block SDO transfers)
@@ -364,8 +376,8 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
         # heartbeats
         cob_id = 0x700 + od.node_id
         lines.append(f"BO_ {cob_id} {name}_heartbeat: 1 {name}")
-        lines.append(f'{INDENT3}SG_ hearbeat : 0|8@1+ (1,0) [0|0] "" c3')
-        enums.append((cob_id, "hearbeat", CANOPEN_STATES))
+        lines.append(f'{INDENT3}SG_ state : 0|7@1+ (1,0) [0|0] "" c3')  # bit 7 is reserved
+        enums.append((cob_id, "state", HB_STATES))
         lines.append("")
     lines.append("")
 

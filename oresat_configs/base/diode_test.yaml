@@ -1,2 +1,111 @@
-objects: []
-tpdos: []
+objects:
+  - index: 0x4000
+    name: dtc
+    description: diode test card
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: ctrl
+        data_type: uint8
+        default: 0x0
+        description: enumeration of control functions
+        value_descriptions:
+          NOP: 0
+          dtc_dacStart: 1
+          dtc_dacStop: 2
+          dtc_gptStart: 3
+          dtc_gptStop: 4
+          dtc_adcStart: 5
+          dtc_adcStop: 6
+          dtc_muxEnable: 7
+          dtc_muxDisable: 8
+          dtc_clearErrors: 9
+        access_type: rw
+
+      - subindex: 0x2
+        name: mux_select
+        data_type: uint8
+        high_limit: 0x07
+        low_limit: 0x0
+        default: 0x0
+        description: diode mux select
+        access_type: rw
+
+      - subindex: 0x3
+        name: dac
+        data_type: uint16
+        high_limit: 0xFFF
+        low_limit: 0x0
+        default: 0x0
+        description: dac output
+        access_type: rw
+
+      - subindex: 0x4
+        name: status
+        data_type: uint16
+        default: 0x0
+        description: status bits
+        access_type: rw
+        bit_definitions:
+          DAC_EN: 0
+          GPT_EN: 1
+          ADC_EN: 2
+          MUX_EN: 3
+          MUX_A0: 4
+          MUX_A1: 5
+          MUX_A2: 6
+
+      - subindex: 0x5
+        name: error
+        data_type: uint16
+        default: 0x0
+        description: error bits
+        access_type: rw
+        bit_definitions:
+          DAC: 0
+          ADC_CB: 1
+          ADC_START: 2
+          ADC_STOP: 3
+
+  - index: 0x4001
+    name: adcsample
+    description: adc samples
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: led_current
+        data_type: uint16
+        description: led feedback current
+        access_type: rw
+        unit: lsb
+
+      - subindex: 0x2
+        name: led_swir_pd_current
+        data_type: uint16
+        description: swir feedback current
+        access_type: rw
+        unit: lsb
+
+      - subindex: 0x3
+        name: uv_pd_current
+        data_type: uint16
+        description: uv feedback current
+        access_type: rw
+        unit: lsb
+
+tpdos:
+  - num: 1
+    fields:
+      - [dtc, ctrl]
+      - [dtc, mux_select]
+      - [dtc, dac]
+      - [dtc, status]
+      - [dtc, error]
+    event_timer_ms: 10000
+
+  - num: 2
+    fields:
+      - [adcsample, led_current]
+      - [adcsample, led_swir_pd_current]
+      - [adcsample, uv_pd_current]
+    event_timer_ms: 10000

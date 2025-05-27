@@ -6,18 +6,17 @@ Seperate from __init__.py to avoid cirular imports.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum, IntEnum, unique
+from dataclasses import InitVar, dataclass, field
+from enum import Enum, unique
+from importlib import abc, resources
+from types import ModuleType
 
 from . import oresat0, oresat0_5, oresat1
-from .base import ConfigPaths
 
 __all__ = [
     "__version__",
-    "OreSatId",
-    "NodeId",
+    "MissionConsts",
     "Mission",
-    "Consts",
 ]
 
 try:
@@ -26,34 +25,52 @@ except ImportError:
     __version__ = "0.0.0"  # package is not installed
 
 
-@dataclass
-class Mission:
+@dataclass(frozen=True)
+class MissionConsts:
     """A specific set of constants associated with an OreSat Mission"""
 
     id: int
     arg: str
-    beacon_path: str
-    cards_path: ConfigPaths
+    paths: InitVar[ModuleType]
+    cards: abc.Traversable = field(init=False)
+    beacon: abc.Traversable = field(init=False)
+    overlays: dict[str, abc.Traversable] = field(default_factory=dict, init=False)
+
+    def __post_init__(self, paths):
+        base = resources.files(paths)
+        object.__setattr__(self, "cards", base / "cards.csv")
+        object.__setattr__(self, "beacon", base / "beacon.yaml")
+        for path in base.iterdir():
+            if path.name.endswith("_overlay.yaml"):
+                card = path.name.rsplit(sep="_", maxsplit=1)[0]
+                self.overlays[card] = path
 
 
 @unique
-class Consts(Mission, Enum):
-    """Constants associated with each OreSat Mission"""
+class Mission(MissionConsts, Enum):
+    """Each OreSat Mission and constant configuration data associated with them"""
 
-    ORESAT0 = 1, "0", oresat0.BEACON_CONFIG_PATH, oresat0.CARD_CONFIGS_PATH
-    ORESAT0_5 = 2, "0.5", oresat0_5.BEACON_CONFIG_PATH, oresat0_5.CARD_CONFIGS_PATH
-    ORESAT1 = 3, "1", oresat1.BEACON_CONFIG_PATH, oresat1.CARD_CONFIGS_PATH
+    ORESAT0 = 1, "0", oresat0
+    ORESAT0_5 = 2, "0.5", oresat0_5
+    ORESAT1 = 3, "1", oresat1
 
     def __str__(self) -> str:
         return "OreSat" + self.arg
 
+    def filename(self) -> str:
+        """Returns a string safe to use in filenames and other restricted settings.
+
+        All lower case, dots replaced with underscores.
+        """
+        return str(self).lower().replace(".", "_")
+
     @classmethod
-    def default(cls) -> Consts:
+    def default(cls) -> Mission:
         """Returns the currently active mission"""
         return cls.ORESAT0_5
 
     @classmethod
-    def from_string(cls, val: str) -> Consts:
+    def from_string(cls, val: str) -> Mission:
         """Fetches the Mission associated with an appropriate string
 
         Appropriate strings are the arg (0, 0.5, ...), optionally prefixed with
@@ -66,49 +83,13 @@ class Consts(Mission, Enum):
         raise ValueError(f"invalid oresat mission: {val}")
 
     @classmethod
-    def from_id(cls, val: OreSatId | int) -> Consts:
-        """Fetches the Mission associated with an integer ID"""
-        if isinstance(val, OreSatId):
-            val = val.value
-        elif not isinstance(val, int):
-            raise TypeError(f"Unsupported val type: '{type(val)}'")
+    def from_id(cls, val: int) -> Mission:
+        """Fetches the Mission associated with an appropriate ID
 
+        Appropriate IDs are integers 1, 2, ... that corespond to the specific
+        mission. Note that these are not the number in the Satellite name.
+        """
         for m in cls:
             if m.id == val:
                 return m
-        raise ValueError(f"invalid OreSatId: {val}")
-
-
-@unique
-class OreSatId(IntEnum):
-    """Unique ID for each OreSat."""
-
-    ORESAT0 = 1
-    ORESAT0_5 = 2
-    ORESAT1 = 3
-
-
-class NodeId(IntEnum):
-    """All the CANopen Node ID for OreSat cards."""
-
-    C3 = 0x01
-    BATTERY_1 = 0x04
-    BATTERY_2 = 0x08
-    SOLAR_MODULE_1 = 0x0C
-    SOLAR_MODULE_2 = 0x10
-    SOLAR_MODULE_3 = 0x14
-    SOLAR_MODULE_4 = 0x18
-    SOLAR_MODULE_5 = 0x1C
-    SOLAR_MODULE_6 = 0x20
-    SOLAR_MODULE_7 = 0x24
-    SOLAR_MODULE_8 = 0x28
-    STAR_TRACKER_1 = 0x2C
-    STAR_TRACKER_2 = 0x30
-    GPS = 0x34
-    ADCS = 0x38
-    REACTION_WHEEL_1 = 0x3C
-    REACTION_WHEEL_2 = 0x40
-    REACTION_WHEEL_3 = 0x44
-    REACTION_WHEEL_4 = 0x48
-    DXWIFI = 0x4C
-    CFC = 0x50
+        raise ValueError(f"invalid oresat mission ID: {val}")
