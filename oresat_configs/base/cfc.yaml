@@ -157,4 +157,7 @@ tpdos:
       - [camera, temperature]
       - [tec, status]
       - [tec, saturated]
+      - [tec, saturation_diff]
+      - [tec, pid_setpoint]
+      - [tec, cooldown_temperature]
     event_timer_ms: 1000

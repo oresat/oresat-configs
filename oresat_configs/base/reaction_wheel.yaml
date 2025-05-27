@@ -71,6 +71,7 @@ objects:
         description: temperature sensor 1 temp
         access_type: ro
         unit: C
+        scale_factor: 0.01
 
       - subindex: 0x2
         name: sensor_2
@@ -78,6 +79,7 @@ objects:
         description: temperature sensor 2 temp
         access_type: ro
         unit: C
+        scale_factor: 0.01
 
       - subindex: 0x3
         name: sensor_3
@@ -85,7 +87,7 @@ objects:
         description: temperature sensor 3 temp
         access_type: ro
         unit: C
-
+        scale_factor: 0.01
 
   - index: 0x4004
     name: requested

@@ -76,3 +76,15 @@ objects:
         name: vrefint
         data_type: uint8
         access_type: ro
+
+  # index 0x3004 reserved
+  # index 0x3005 reserved
+  # index 0x3006 reserved
+  # index 0x3007 reserved
+  # index 0x3008 reserved
+
+  - index: 0x3009
+    name: board_id
+    data_type: uint8
+    description: the unique board id for the board revision
+    access_type: const

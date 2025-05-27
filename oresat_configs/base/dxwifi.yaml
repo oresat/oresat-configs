@@ -119,4 +119,7 @@ tpdos:
     fields:
       - [status]
       - [radio, temperature]
+      - [transmission, bit_rate]
+      - [transmission, images_transmitted]
+      - [transmission, enable_pa]
     event_timer_ms: 1000
