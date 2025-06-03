@@ -196,4 +196,3 @@ tpdos:
       - [temperature, sensor_2]
       - [temperature, sensor_3]
     event_timer_ms: 5000
->>>>>>> master
