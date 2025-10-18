@@ -1,9 +1,10 @@
 """Convert OreSat configs to ODs."""
 
-from collections import namedtuple
+from __future__ import annotations
+
 from copy import deepcopy
 from importlib import abc, resources
-from typing import Union
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 import canopen
 from canopen import ObjectDictionary
@@ -12,10 +13,13 @@ from dacite import from_dict
 from yaml import CLoader, load
 
 from . import base
-from .beacon_config import BeaconConfig
 from .card_config import CardConfig, ConfigObject, IndexObject, SubindexObject
-from .card_info import Card
 from .constants import Mission, __version__
+
+if TYPE_CHECKING:
+    from .beacon_config import BeaconConfig
+    from .card_info import Card
+
 
 STD_OBJS_FILE_NAME = resources.files("oresat_configs") / "standard_objects.yaml"
 
@@ -41,10 +45,16 @@ STR_2_OD_DATA_TYPE = {
     "domain": canopen.objectdictionary.DOMAIN,
 }
 
-OdDataTypeInfo = namedtuple("OdDataTypeInfo", ("default", "size", "low_limit", "high_limit"))
+
+class OdDataTypeInfo(NamedTuple):
+    default: bool | int | float | str | bytes | None
+    size: int
+    low_limit: int | None
+    high_limit: int | None
+
 
 OD_DATA_TYPES = {
-    canopen.objectdictionary.BOOLEAN: OdDataTypeInfo(False, 8, None, None),
+    canopen.objectdictionary.BOOLEAN: OdDataTypeInfo(False, 8, None, None),  # noqa: FBT003
     canopen.objectdictionary.INTEGER8: OdDataTypeInfo(0, 8, -(2**8) // 2, 2**8 // 2 - 1),
     canopen.objectdictionary.INTEGER16: OdDataTypeInfo(0, 16, -(2**16) // 2, 2**16 // 2 - 1),
     canopen.objectdictionary.INTEGER32: OdDataTypeInfo(0, 16, -(2**32) // 2, 2**32 // 2 - 1),
@@ -74,23 +84,23 @@ def _set_var_default(obj: ConfigObject, var: Variable) -> None:
     if obj.data_type == "octet_str":
         default = b"\x00" * obj.length
     elif default is None:
+        assert var.data_type is not None
         default = OD_DATA_TYPES[var.data_type].default
     elif var.data_type in canopen.objectdictionary.INTEGER_TYPES and isinstance(default, str):
         # remove node id
         if "+$NODE_ID" in default:
             default = default.split("+")[0]
         elif "$NODE_ID+" in default:
-            default = var.default.split("+")[1]
+            # FIXME: canopen is still working out the type annotations for their codebase. Default
+            #        should be Union[int, str, bytes, None] but is only Optional[int]. Remove cast
+            #        when they fix it upstream.
+            default = cast(str, var.default).split("+")[1]
 
-        # convert str to int
-        if default.startswith("0x"):
-            default = int(default, 16)
-        else:
-            default = int(default)
+        default = int(default, 0)
     var.default = default
 
 
-def _parse_bit_definitions(obj: Union[IndexObject, SubindexObject]) -> dict[str, list[int]]:
+def _parse_bit_definitions(obj: ConfigObject) -> dict[str, list[int]]:
     bit_defs = {}
     for name, bits in obj.bit_definitions.items():
         if isinstance(bits, int):
@@ -103,7 +113,7 @@ def _parse_bit_definitions(obj: Union[IndexObject, SubindexObject]) -> dict[str,
     return bit_defs
 
 
-def _make_var(obj: Union[IndexObject, SubindexObject], index: int, subindex: int = 0) -> Variable:
+def _make_var(obj: IndexObject | SubindexObject, index: int, subindex: int = 0) -> Variable:
     var = canopen.objectdictionary.Variable(obj.name, index, subindex)
     var.access_type = obj.access_type
     var.description = obj.description
@@ -202,7 +212,9 @@ def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
 
 
 def _add_objects(
-    od: ObjectDictionary, objects: list[IndexObject], node_ids: dict[str, int]
+    od: ObjectDictionary,
+    objects: list[IndexObject],
+    node_ids: dict[str, int],
 ) -> None:
     """File a objectdictionary with all the objects."""
 
@@ -227,12 +239,16 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
     tpdos = config.tpdos
 
     for tpdo in tpdos:
-        od.device_information.nr_of_TXPDO += 1
+        # FIXME: canopen is still working on improving their type annotations. nr_of_TXPDOs is
+        #        marked as a bool which is clearly wrong. Remove the ignore when upstream fixes
+        #        their types
+        od.device_information.nr_of_TXPDO += 1  # type: ignore[operator,assignment]
 
         comm_index = TPDO_COMM_START + tpdo.num - 1
         map_index = TPDO_PARA_START + tpdo.num - 1
         comm_rec = canopen.objectdictionary.Record(
-            f"tpdo_{tpdo.num}_communication_parameters", comm_index
+            f"tpdo_{tpdo.num}_communication_parameters",
+            comm_index,
         )
         map_rec = canopen.objectdictionary.Record(f"tpdo_{tpdo.num}_mapping_parameters", map_index)
         od.add_object(map_rec)
@@ -247,19 +263,20 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
         for t_field in tpdo.fields:
             subindex = tpdo.fields.index(t_field) + 1
             var = canopen.objectdictionary.Variable(
-                f"mapping_object_{subindex}", map_index, subindex
+                f"mapping_object_{subindex}",
+                map_index,
+                subindex,
             )
             var.access_type = "const"
             var.data_type = canopen.objectdictionary.UNSIGNED32
-            if len(t_field) == 1:
-                mapped_obj = od[t_field[0]]
-            elif len(t_field) == 2:
-                mapped_obj = od[t_field[0]][t_field[1]]
-            else:
-                raise ValueError("tpdo field must be a 1 or 2 values")
+
+            mapped_obj = od[t_field[0]]
+            if isinstance(mapped_obj, (Record, Array)):
+                mapped_obj = mapped_obj[t_field[1]]
             mapped_subindex = mapped_obj.subindex
             value = mapped_obj.index << 16
             value += mapped_subindex << 8
+            assert mapped_obj.data_type is not None
             value += OD_DATA_TYPES[mapped_obj.data_type].size
             var.default = value
             map_rec.add_member(var)
@@ -277,6 +294,7 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED32
         node_id = od.node_id
+        assert node_id is not None
         if od.device_information.product_name == "gps" and tpdo.num == 16:
             # time sync TPDO from GPS uses C3 TPDO 1
             node_id = 0x1
@@ -320,10 +338,13 @@ def _add_rpdo_data(
     tpdo_node_od: ObjectDictionary,
     tpdo_node_name: str,
 ) -> None:
-    tpdo_comm_index = TPDO_COMM_START + tpdo_num - 1
-    tpdo_mapping_index = TPDO_PARA_START + tpdo_num - 1
+    assert tpdo_node_od.node_id is not None
+    tpdo_comm = tpdo_node_od[TPDO_COMM_START + tpdo_num - 1]
+    assert isinstance(tpdo_comm, Record)
+    tpdo_mapping = tpdo_node_od[TPDO_PARA_START + tpdo_num - 1]
+    assert isinstance(tpdo_mapping, Record)
 
-    time_sync_tpdo = tpdo_node_od[tpdo_comm_index]["cob_id"].default == 0x181
+    time_sync_tpdo = tpdo_comm["cob_id"].default == 0x181
     if time_sync_tpdo:
         rpdo_mapped_index = 0x2010
         rpdo_mapped_rec = rpdo_node_od[rpdo_mapped_index]
@@ -331,13 +352,15 @@ def _add_rpdo_data(
     else:
         rpdo_mapped_index = 0x5000 + tpdo_node_od.node_id
         if rpdo_mapped_index not in rpdo_node_od:
-            rpdo_mapped_rec = canopen.objectdictionary.Record(tpdo_node_name, rpdo_mapped_index)
+            rpdo_mapped_rec = Record(tpdo_node_name, rpdo_mapped_index)
             rpdo_mapped_rec.description = f"{tpdo_node_name} tpdo mapped data"
             rpdo_node_od.add_object(rpdo_mapped_rec)
 
             # index 0 for node data index
             var = canopen.objectdictionary.Variable(
-                "highest_index_supported", rpdo_mapped_index, 0x0
+                "highest_index_supported",
+                rpdo_mapped_index,
+                0x0,
             )
             var.access_type = "const"
             var.data_type = canopen.objectdictionary.UNSIGNED8
@@ -346,81 +369,86 @@ def _add_rpdo_data(
         else:
             rpdo_mapped_rec = rpdo_node_od[rpdo_mapped_index]
 
-    rpdo_node_od.device_information.nr_of_RXPDO += 1
-    rpdo_num = rpdo_node_od.device_information.nr_of_RXPDO
+    # FIXME: canopen is still working on improving their type annotations. nr_of_RXPDO is marked as
+    #        a bool which is clearly wrong. Remove the ignore and cast when upstream fixes things.
+    rpdo_node_od.device_information.nr_of_RXPDO += 1  # type: ignore[operator,assignment]
+    rpdo_num = cast(int, rpdo_node_od.device_information.nr_of_RXPDO)
 
     rpdo_comm_index = RPDO_COMM_START + rpdo_num - 1
     rpdo_comm_rec = canopen.objectdictionary.Record(
-        f"rpdo_{rpdo_num}_communication_parameters", rpdo_comm_index
+        f"rpdo_{rpdo_num}_communication_parameters",
+        rpdo_comm_index,
     )
     rpdo_node_od.add_object(rpdo_comm_rec)
 
-    var = canopen.objectdictionary.Variable("cob_id", rpdo_comm_index, 0x1)
+    var = Variable("cob_id", rpdo_comm_index, 0x1)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED32
-    var.default = tpdo_node_od[tpdo_comm_index][0x1].default  # get value from TPDO def
+    var.default = tpdo_comm[0x1].default  # get value from TPDO def
     rpdo_comm_rec.add_member(var)
 
-    var = canopen.objectdictionary.Variable("transmission_type", rpdo_comm_index, 0x2)
+    var = Variable("transmission_type", rpdo_comm_index, 0x2)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
     var.default = 254
     rpdo_comm_rec.add_member(var)
 
-    var = canopen.objectdictionary.Variable("event_timer", rpdo_comm_index, 0x5)
+    var = Variable("event_timer", rpdo_comm_index, 0x5)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED16
     var.default = 0
     rpdo_comm_rec.add_member(var)
 
     # index 0 for comms index
-    var = canopen.objectdictionary.Variable("highest_index_supported", rpdo_comm_index, 0x0)
+    var = Variable("highest_index_supported", rpdo_comm_index, 0x0)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
-    var.default = sorted(list(rpdo_comm_rec.subindices))[-1]  # no subindex 3 or 4
+    var.default = sorted(rpdo_comm_rec.subindices)[-1]  # no subindex 3 or 4
     rpdo_comm_rec.add_member(var)
 
     rpdo_mapping_index = RPDO_PARA_START + rpdo_num - 1
-    rpdo_mapping_rec = canopen.objectdictionary.Record(
-        f"rpdo_{rpdo_num}_mapping_parameters", rpdo_mapping_index
-    )
+    rpdo_mapping_rec = Record(f"rpdo_{rpdo_num}_mapping_parameters", rpdo_mapping_index)
     rpdo_node_od.add_object(rpdo_mapping_rec)
 
     # index 0 for map index
-    var = canopen.objectdictionary.Variable("highest_index_supported", rpdo_mapping_index, 0x0)
+    var = Variable("highest_index_supported", rpdo_mapping_index, 0x0)
     var.access_type = "const"
     var.data_type = canopen.objectdictionary.UNSIGNED8
     var.default = 0
     rpdo_mapping_rec.add_member(var)
+    assert rpdo_mapping_rec[0].default is not None
 
-    for j in range(len(tpdo_node_od[tpdo_mapping_index])):
+    for j in range(len(tpdo_mapping)):
         if j == 0:
             continue  # skip
 
-        tpdo_mapping_obj = tpdo_node_od[tpdo_mapping_index][j]
+        tpdo_mapping_obj = tpdo_mapping[j]
+        assert tpdo_mapping_obj.default is not None
 
         # master node data
         if not time_sync_tpdo:
+            assert isinstance(rpdo_mapped_rec, Record)
+            assert rpdo_mapped_rec[0].default is not None
+
             rpdo_mapped_subindex = rpdo_mapped_rec[0].default + 1
-            tpdo_mapped_index = (tpdo_mapping_obj.default >> 16) & 0xFFFF
+            mapped_tpdo = tpdo_node_od[(tpdo_mapping_obj.default >> 16) & 0xFFFF]
             tpdo_mapped_subindex = (tpdo_mapping_obj.default >> 8) & 0xFF
-            if isinstance(tpdo_node_od[tpdo_mapped_index], canopen.objectdictionary.Variable):
-                tpdo_mapped_obj = tpdo_node_od[tpdo_mapped_index]
-                name = tpdo_mapped_obj.name
+            if isinstance(mapped_tpdo, Variable):
+                name = mapped_tpdo.name
             else:
-                tpdo_mapped_obj = tpdo_node_od[tpdo_mapped_index][tpdo_mapped_subindex]
-                name = tpdo_node_od[tpdo_mapped_index].name + "_" + tpdo_mapped_obj.name
-            var = canopen.objectdictionary.Variable(name, rpdo_mapped_index, rpdo_mapped_subindex)
-            var.description = tpdo_mapped_obj.description
+                name = mapped_tpdo.name + "_" + mapped_tpdo[tpdo_mapped_subindex].name
+                mapped_tpdo = mapped_tpdo[tpdo_mapped_subindex]
+            var = Variable(name, rpdo_mapped_index, rpdo_mapped_subindex)
+            var.description = mapped_tpdo.description
             var.access_type = "rw"
-            var.data_type = tpdo_mapped_obj.data_type
-            var.default = tpdo_mapped_obj.default
-            var.unit = tpdo_mapped_obj.unit
-            var.factor = tpdo_mapped_obj.factor
-            var.bit_definitions = deepcopy(tpdo_mapped_obj.bit_definitions)
-            var.value_descriptions = deepcopy(tpdo_mapped_obj.value_descriptions)
-            var.max = tpdo_mapped_obj.max
-            var.min = tpdo_mapped_obj.min
+            var.data_type = mapped_tpdo.data_type
+            var.default = mapped_tpdo.default
+            var.unit = mapped_tpdo.unit
+            var.factor = mapped_tpdo.factor
+            var.bit_definitions = deepcopy(mapped_tpdo.bit_definitions)
+            var.value_descriptions = deepcopy(mapped_tpdo.value_descriptions)
+            var.max = mapped_tpdo.max
+            var.min = mapped_tpdo.min
             var.pdo_mappable = True
             rpdo_mapped_rec.add_member(var)
 
@@ -438,19 +466,27 @@ def _add_rpdo_data(
         if rpdo_mapped_subindex == 0:
             rpdo_mapped_obj = rpdo_node_od[rpdo_mapped_index]
         else:
-            rpdo_mapped_obj = rpdo_node_od[rpdo_mapped_index][rpdo_mapped_subindex]
+            obj = rpdo_node_od[rpdo_mapped_index]
+            assert isinstance(obj, (Record, Array))
+            rpdo_mapped_obj = obj[rpdo_mapped_subindex]
+        assert isinstance(rpdo_mapped_obj, Variable)
+        assert rpdo_mapped_obj.data_type is not None
         value += OD_DATA_TYPES[rpdo_mapped_obj.data_type].size
         var.default = value
         rpdo_mapping_rec.add_member(var)
 
         # update these
         if not time_sync_tpdo:
+            assert isinstance(rpdo_mapped_rec, Record)
+            assert rpdo_mapped_rec[0].default is not None
             rpdo_mapped_rec[0].default += 1
         rpdo_mapping_rec[0].default += 1
 
 
 def _add_node_rpdo_data(
-    config: CardConfig, od: ObjectDictionary, od_db: dict[str, ObjectDictionary]
+    config: CardConfig,
+    od: ObjectDictionary,
+    od_db: dict[str, ObjectDictionary],
 ) -> None:
     """Add all configured RPDO object to OD based off of TPDO objects from another OD."""
 
@@ -476,14 +512,15 @@ def _add_all_rpdo_data(
 
 
 def _load_std_objs(
-    file_path: abc.Traversable, node_ids: dict[str, int]
-) -> dict[str, Union[Variable, Record, Array]]:
+    file_path: abc.Traversable,
+    node_ids: dict[str, int],
+) -> dict[str, Variable | Record | Array]:
     """Load the standard objects."""
 
     with resources.as_file(file_path) as path, path.open() as f:
         std_objs_raw = load(f, Loader=CLoader)
 
-    std_objs = {}
+    std_objs: dict[str, Variable | Record | Array] = {}
     for obj_raw in std_objs_raw:
         obj = from_dict(data_class=IndexObject, data=obj_raw)
         if obj.object_type == "variable":
@@ -559,7 +596,8 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
 
 
 def _load_configs(
-    config_paths: dict[str, Card], overlays: dict[str, abc.Traversable]
+    config_paths: dict[str, Card],
+    overlays: dict[str, abc.Traversable],
 ) -> dict[str, CardConfig]:
     """Generate all ODs for a OreSat mission."""
 
@@ -568,6 +606,7 @@ def _load_configs(
     for name, card in config_paths.items():
         if card.config is None:
             continue
+        assert card.common is not None
 
         with resources.as_file(card.config) as path:
             card_config = CardConfig.from_yaml(path)
@@ -616,20 +655,20 @@ def _gen_od_db(
         od = canopen.ObjectDictionary()
         od.bitrate = 1_000_000  # bps
         od.node_id = cards[name].node_id
-        od.device_information.allowed_baudrates = set([1000])
+        od.device_information.allowed_baudrates = {1000}
         od.device_information.vendor_name = "PSAS"
         od.device_information.vendor_number = 0
         od.device_information.product_name = cards[name].nice_name
         od.device_information.product_number = 0
         od.device_information.revision_number = 0
-        od.device_information.order_code = 0
+        od.device_information.order_code = None
         od.device_information.simple_boot_up_master = False
         od.device_information.simple_boot_up_slave = False
         od.device_information.granularity = 8
         od.device_information.dynamic_channels_supported = False
         od.device_information.group_messaging = False
-        od.device_information.nr_of_RXPDO = 0
-        od.device_information.nr_of_TXPDO = 0
+        od.device_information.nr_of_RXPDO = 0  # type: ignore[assignment]
+        od.device_information.nr_of_TXPDO = 0  # type: ignore[assignment]
         od.device_information.LSS_supported = False
 
         # add common and card records
@@ -639,45 +678,59 @@ def _gen_od_db(
         for obj_name in config.std_objects:
             od[std_objs[obj_name].index] = deepcopy(std_objs[obj_name])
             if obj_name == "cob_id_emergency_message":
-                od["cob_id_emergency_message"].default = 0x80 + cards[name].node_id
+                obj = od["cob_id_emergency_message"]
+                assert isinstance(obj, Variable)
+                obj.default = 0x80 + cards[name].node_id
 
         # add TPDSs
         _add_tpdo_data(od, config)
 
         # set specific obj defaults
-        od["versions"]["configs_version"].default = __version__
-        od["satellite_id"].default = mission.id
+        versions = od["versions"]
+        assert isinstance(versions, Record)
+        # FIXME: canopen is still working out their type annotations, default should be of type
+        #        Union[int, str, bytes, None] but is Optional[int]. Remove ignore when upstream
+        #        fixes it.
+        versions["configs_version"].default = __version__  # type: ignore[assignment]
+        satellite_id = od["satellite_id"]
+        assert isinstance(satellite_id, Variable)
+        satellite_id.default = mission.id
         for sat in Mission:
-            od["satellite_id"].value_descriptions[sat.id] = sat.name.lower()
+            satellite_id.value_descriptions[sat.id] = sat.name.lower()
         if name == "c3":
-            od["beacon"]["revision"].default = beacon_def.revision
-            od["beacon"]["dest_callsign"].default = beacon_def.ax25.dest_callsign
-            od["beacon"]["dest_ssid"].default = beacon_def.ax25.dest_ssid
-            od["beacon"]["src_callsign"].default = beacon_def.ax25.src_callsign
-            od["beacon"]["src_ssid"].default = beacon_def.ax25.src_ssid
-            od["beacon"]["control"].default = beacon_def.ax25.control
-            od["beacon"]["command"].default = beacon_def.ax25.command
-            od["beacon"]["response"].default = beacon_def.ax25.response
-            od["beacon"]["pid"].default = beacon_def.ax25.pid
-            od["flight_mode"].access_type = "ro"
+            beacon = od["beacon"]
+            assert isinstance(beacon, Record)
+            beacon["revision"].default = beacon_def.revision
+            beacon["dest_callsign"].default = beacon_def.ax25.dest_callsign  # type: ignore[assignment]
+            beacon["dest_ssid"].default = beacon_def.ax25.dest_ssid
+            beacon["src_callsign"].default = beacon_def.ax25.src_callsign  # type: ignore[assignment]
+            beacon["src_ssid"].default = beacon_def.ax25.src_ssid
+            beacon["control"].default = beacon_def.ax25.control
+            beacon["command"].default = beacon_def.ax25.command
+            beacon["response"].default = beacon_def.ax25.response
+            beacon["pid"].default = beacon_def.ax25.pid
+            flight_mode = od["flight_mode"]
+            assert isinstance(flight_mode, Variable)
+            flight_mode.access_type = "ro"
 
         od_db[name] = od
 
     # add all RPDOs
-    for name in configs:
+    for name, config in configs.items():
         if name == "c3":
             continue
         _add_all_rpdo_data(od_db["c3"], od_db[name], name)
-        _add_node_rpdo_data(configs[name], od_db[name], od_db)
+        _add_node_rpdo_data(config, od_db[name], od_db)
 
     # set all object values to its default value
     for od in od_db.values():
         for index in od:
-            if not isinstance(od[index], canopen.objectdictionary.Variable):
-                for subindex in od[index]:
-                    od[index][subindex].value = od[index][subindex].default
+            entry = od[index]
+            if not isinstance(entry, Variable):
+                for subindex in entry:
+                    entry[subindex].value = entry[subindex].default
             else:
-                od[index].value = od[index].default
+                entry.value = entry.default
 
     return od_db
 
@@ -689,11 +742,13 @@ def _gen_c3_fram_defs(c3_od: ObjectDictionary, config: CardConfig) -> list[Varia
 
     for fields in config.fram:
         obj = None
-        if len(fields) == 1:
+        if len(fields) >= 1:
             obj = c3_od[fields[0]]
-        elif len(fields) == 2:
-            obj = c3_od[fields[0]][fields[1]]
+        if len(fields) == 2:
+            assert isinstance(obj, (Record, Array))
+            obj = obj[fields[1]]
         if obj is not None:
+            assert isinstance(obj, Variable)
             fram_objs.append(obj)
 
     return fram_objs
@@ -706,11 +761,13 @@ def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> li
 
     for fields in beacon_def.fields:
         obj = None
-        if len(fields) == 1:
+        if len(fields) >= 1:
             obj = c3_od[fields[0]]
-        elif len(fields) == 2:
-            obj = c3_od[fields[0]][fields[1]]
+        if len(fields) == 2:
+            assert isinstance(obj, (Record, Array))
+            obj = obj[fields[1]]
         if obj is not None:
+            assert isinstance(obj, Variable)
             beacon_objs.append(obj)
 
     return beacon_objs
@@ -722,20 +779,20 @@ def _gen_fw_base_od(mission: Mission) -> canopen.ObjectDictionary:
     od = canopen.ObjectDictionary()
     od.bitrate = 1_000_000  # bps
     od.node_id = 0x7C
-    od.device_information.allowed_baudrates = set([1000])  # kpbs
+    od.device_information.allowed_baudrates = {1000}  # kpbs
     od.device_information.vendor_name = "PSAS"
     od.device_information.vendor_number = 0
     od.device_information.product_name = "Firmware Base"
     od.device_information.product_number = 0
     od.device_information.revision_number = 0
-    od.device_information.order_code = 0
+    od.device_information.order_code = None
     od.device_information.simple_boot_up_master = False
     od.device_information.simple_boot_up_slave = False
     od.device_information.granularity = 8
     od.device_information.dynamic_channels_supported = False
     od.device_information.group_messaging = False
-    od.device_information.nr_of_RXPDO = 0
-    od.device_information.nr_of_TXPDO = 0
+    od.device_information.nr_of_RXPDO = 0  # type: ignore[assignment]
+    od.device_information.nr_of_TXPDO = 0  # type: ignore[assignment]
     od.device_information.LSS_supported = False
 
     with resources.as_file(resources.files(base) / "fw_common.yaml") as path:
@@ -747,13 +804,22 @@ def _gen_fw_base_od(mission: Mission) -> canopen.ObjectDictionary:
     for name in config.std_objects:
         od[std_objs[name].index] = deepcopy(std_objs[name])
         if name == "cob_id_emergency_message":
-            od["cob_id_emergency_message"].default = 0x80 + od.node_id
+            obj = od["cob_id_emergency_message"]
+            assert isinstance(obj, Variable)
+            obj.default = 0x80 + od.node_id
 
     # add TPDSs
     _add_tpdo_data(od, config)
 
     # set specific obj defaults
-    od["versions"]["configs_version"].default = __version__
-    od["satellite_id"].default = mission.id
+    versions = od["versions"]
+    assert isinstance(versions, Record)
+    # FIXME: canopen is still working out their type annotations, default should be of type
+    #        Union[int, str, bytes, None] but is Optional[int]. Remove ignore when upstream
+    #        fixes it.
+    versions["configs_version"].default = __version__  # type: ignore[assignment]
+    satellite_id = od["satellite_id"]
+    assert isinstance(satellite_id, Variable)
+    satellite_id.default = mission.id
 
     return od

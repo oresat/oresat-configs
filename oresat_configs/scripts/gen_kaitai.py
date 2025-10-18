@@ -1,7 +1,7 @@
 """Generate KaiTai for the beacon."""
 
-from argparse import ArgumentParser, Namespace
-from typing import Any, Optional
+from argparse import Namespace
+from typing import Any, cast
 
 import canopen
 from canopen.objectdictionary import Array, Record
@@ -9,15 +9,27 @@ from yaml import dump
 
 from .. import Mission, OreSatConfig
 
-GEN_KAITAI = "generate beacon kaitai configuration"
 
+def build_arguments(subparsers: Any) -> None:
+    """Build command line arguments for this script.
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
+    This function will be invoked by scripts.main to configure command line arguments for this
+    subcommand. Use subparsers.add_parser() to get an ArgumentParser. The parser must have the
+    default argument func which is the entry point for this subcommand: parser.set_defaults(func=?)
 
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
+    Parameters
+    ----------
+    subparsers
+        The output of ArgumentParser.add_subparsers() from the primary ArgumentParser. This function
+        should call add_parser() on this parameter to get the ArgumentParser that is used to
+        configure arguments for this subcommand.
+        See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of
+        that section, for more.
     """
-    parser.description = GEN_KAITAI
+    desc = "generate beacon kaitai configuration"
+    parser = subparsers.add_parser("kaitai", description=desc, help=desc)
+    parser.set_defaults(func=gen_kaitai)
+
     parser.add_argument(
         "--oresat",
         default=Mission.default().arg,
@@ -26,23 +38,11 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument(
-        "-d", "--dir-path", default=".", help="Output directory path. (Default: %(default)s)"
+        "-d",
+        "--dir-path",
+        default=".",
+        help="Output directory path. (Default: %(default)s)",
     )
-    return parser
-
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("kaitai", help=GEN_KAITAI))
-    parser.set_defaults(func=gen_kaitai)
 
 
 CANOPEN_TO_KAITAI_DT = {
@@ -79,7 +79,7 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                 "id": "ax25_frame",
                 "type": "ax25_frame",
                 "doc-ref": "https://www.tapr.org/pub_ax25.html",
-            }
+            },
         ],
         "types": {
             "ax25_frame": {
@@ -106,7 +106,7 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                         "id": "ax25_trunk",
                         "type": "ax25_trunk",
                     },
-                ]
+                ],
             },
             "ax25_header": {
                 "seq": [
@@ -128,8 +128,8 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                     {
                         "id": "refcs",
                         "type": "u4",
-                    }
-                ]
+                    },
+                ],
             },
             "repeater": {
                 "seq": [
@@ -139,8 +139,8 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                         "repeat": "until",
                         "repeat-until": "((_.rpt_ssid_raw.ssid_mask & 0x1) == 0x1)",
                         "doc": "Repeat until no repeater flag is set!",
-                    }
-                ]
+                    },
+                ],
             },
             "repeaters": {
                 "seq": [
@@ -152,7 +152,7 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                         "id": "rpt_ssid_raw",
                         "type": "ssid_mask",
                     },
-                ]
+                ],
             },
             "callsign_raw": {
                 "seq": [
@@ -161,8 +161,8 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                         "process": "ror(1)",
                         "size": 6,
                         "type": "callsign",
-                    }
-                ]
+                    },
+                ],
             },
             "callsign": {
                 "seq": [
@@ -172,15 +172,15 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                         "encoding": "ASCII",
                         "size": 6,
                         "valid": {"any-of": ['"KJ7SAT"', '"SPACE "']},
-                    }
-                ]
+                    },
+                ],
             },
             "ssid_mask": {
                 "seq": [
                     {
                         "id": "ssid_mask",
                         "type": "u1",
-                    }
+                    },
                 ],
                 "instances": {"ssid": {"value": "(ssid_mask & 0x0f) >> 1"}},
             },
@@ -191,7 +191,7 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                         "type": "u1",
                     },
                     {"id": "ax25_info", "type": "ax25_info_data", "size": -1},
-                ]
+                ],
             },
             "ui_frame": {
                 "seq": [
@@ -200,7 +200,7 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
                         "type": "u1",
                     },
                     {"id": "ax25_info", "type": "ax25_info_data", "size": -1},
-                ]
+                ],
             },
             "ax25_info_data": {"seq": []},
         },
@@ -211,12 +211,10 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
 
     for obj in config.beacon_def:
         name = (
-            "_".join([obj.parent.name, obj.name])
-            if isinstance(obj.parent, (Record, Array))
-            else obj.name
+            f"{obj.parent.name}_{obj.name}" if isinstance(obj.parent, (Record, Array)) else obj.name
         )
-
-        new_var = {
+        assert obj.data_type is not None
+        new_var: dict[str, Any] = {
             "id": name,
             "type": CANOPEN_TO_KAITAI_DT[obj.data_type],
             "doc": obj.description,
@@ -224,7 +222,7 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
         if new_var["type"] == "str":
             new_var["encoding"] = "ASCII"
             if obj.access_type == "const":
-                new_var["size"] = len(obj.default)
+                new_var["size"] = len(cast(str, obj.default))
             payload_size += new_var["size"] * 8
         else:
             payload_size += len(obj)
@@ -240,10 +238,7 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
         dump(kaitai_data, file)
 
 
-def gen_kaitai(args: Optional[Namespace] = None) -> None:
+def gen_kaitai(args: Namespace) -> None:
     """Gen_kaitai main."""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
-
     config = OreSatConfig(args.oresat)
     write_kaitai(config, args.dir_path)

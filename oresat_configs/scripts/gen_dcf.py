@@ -1,23 +1,40 @@
 """Generate a DCF for from an OreSat card's object directory."""
 
-from argparse import ArgumentParser, Namespace
-from datetime import datetime
-from typing import Any, Optional
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, cast
 
 import canopen
-from canopen.objectdictionary import Variable
+
+if TYPE_CHECKING:
+    from argparse import Namespace
+
+    from canopen.objectdictionary import Variable
 
 from .. import Mission, OreSatConfig
 
-GEN_DCF = "generate DCF file for OreSat node(s)"
 
+def build_arguments(subparsers: Any) -> None:
+    """Build command line arguments for this script.
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
+    This function will be invoked by scripts.main to configure command line arguments for this
+    subcommand. Use subparsers.add_parser() to get an ArgumentParser. The parser must have the
+    default argument func which is the entry point for this subcommand: parser.set_defaults(func=?)
 
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
+    Parameters
+    ----------
+    subparsers
+        The output of ArgumentParser.add_subparsers() from the primary ArgumentParser. This function
+        should call add_parser() on this parameter to get the ArgumentParser that is used to
+        configure arguments for this subcommand.
+        See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of
+        that section, for more.
     """
-    parser.description = GEN_DCF
+    desc = "generate DCF file for OreSat node(s)"
+    parser = subparsers.add_parser("dcf", description=desc, help=desc)
+    parser.set_defaults(func=gen_dcf)
+
     parser.add_argument(
         "--oresat",
         default=Mission.default().arg,
@@ -27,21 +44,6 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
     )
     parser.add_argument("card", help="card name; all, c3, gps, star_tracker_1, etc")
     parser.add_argument("-d", "--dir-path", default=".", help='directory path; defautl "."')
-    return parser
-
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("dcf", help=GEN_DCF))
-    parser.set_defaults(func=gen_dcf)
 
 
 def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
@@ -56,12 +58,12 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     """
 
     lines = []
-
     dev_info = od.device_information
+    assert dev_info.product_name is not None
     file_name = dev_info.product_name + ".dcf"
     file_name = file_name.lower().replace(" ", "_")
     file_path = f"{dir_path}/{file_name}"
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     # file info seciton
     lines.append("[FileInfo]")
@@ -87,21 +89,21 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     lines.append(f"ProductNumber={dev_info.product_number}")
     lines.append(f"RevisionNumber={dev_info.revision_number}")
     lines.append(f"OrderCode={dev_info.order_code}")
-    for i in [10, 12, 50, 125, 250, 500, 800, 1000]:  # baud rates in kpps
-        lines.append(f"BaudRate_{i}=1")
-    lines.append(f"SimpleBootUpMaster={int(dev_info.simple_boot_up_master)}")
-    lines.append(f"SimpleBootUpSlave={int(dev_info.simple_boot_up_slave)}")
+    lines.extend(f"BaudRate_{i}=1" for i in (10, 12, 50, 125, 250, 500, 800, 1000))  # baud in kpps
+    lines.append(f"SimpleBootUpMaster={1 if dev_info.simple_boot_up_master else 0}")
+    lines.append(f"SimpleBootUpSlave={1 if dev_info.simple_boot_up_slave else 0}")
     lines.append(f"Granularity={dev_info.granularity}")
-    lines.append(f"DynamicChannelsSupported={int(dev_info.dynamic_channels_supported)}")
-    lines.append(f"GroupMessaging={int(dev_info.group_messaging)}")
+    lines.append(f"DynamicChannelsSupported={1 if dev_info.dynamic_channels_supported else 0}")
+    lines.append(f"GroupMessaging={1 if dev_info.group_messaging else 0}")
     lines.append(f"NrOfRXPDO={dev_info.nr_of_RXPDO}")
     lines.append(f"NrOfTXPDO={dev_info.nr_of_TXPDO}")
-    lines.append(f"LSS_Supported={int(dev_info.LSS_supported)}")
+    lines.append(f"LSS_Supported={1 if dev_info.LSS_supported else 0}")
     lines.append("")
 
     lines.append("[DeviceComissioning]")  # only one 'm' in header
     lines.append(f"NodeID=0x{od.node_id:X}")
     lines.append(f"NodeName={dev_info.product_name}")
+    assert od.bitrate is not None
     lines.append(f"BaudRate={od.bitrate // 1000}")  # in kpbs
     lines.append("NetNumber=0")
     lines.append("NetworkName=0")
@@ -113,8 +115,7 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     lines.append("")
 
     lines.append("[DummyUsage]")
-    for i in range(8):
-        lines.append(f"Dummy000{i}=1")
+    lines.extend(f"Dummy000{i}=1" for i in range(8))
     lines.append("")
 
     lines.append("[Comments]")
@@ -122,10 +123,7 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     lines.append("")
 
     lines.append("[MandatoryObjects]")
-    mandatory_objs = []
-    for i in [0x1000, 0x1001, 0x1018]:
-        if i in od:
-            mandatory_objs.append(i)
+    mandatory_objs = [i for i in (0x1000, 0x1001, 0x1018) if i in od]
     lines.append(f"SupportedObjects={len(mandatory_objs)}")
     for i in mandatory_objs:
         num = mandatory_objs.index(i) + 1
@@ -136,10 +134,9 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     lines += _objects_lines(od, mandatory_objs)
 
     lines.append("[OptionalObjects]")
-    optional_objs = []
-    for i in od:
-        if (i >= 0x1002 and i <= 0x1FFF and i != 0x1018) or (i >= 0x6000 and i <= 0xFFFF):
-            optional_objs.append(i)
+    optional_objs = [
+        i for i in od if (0x1002 <= i <= 0x1FFF and i != 0x1018) or (0x6000 <= i <= 0xFFFF)
+    ]
     lines.append(f"SupportedObjects={len(optional_objs)}")
     for i in optional_objs:
         num = optional_objs.index(i) + 1
@@ -150,10 +147,7 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     lines += _objects_lines(od, optional_objs)
 
     lines.append("[ManufacturerObjects]")
-    manufacturer_objs = []
-    for i in od:
-        if i >= 0x2000 and i <= 0x5FFF:
-            manufacturer_objs.append(i)
+    manufacturer_objs = [i for i in od if 0x2000 <= i <= 0x5FFF]
     lines.append(f"SupportedObjects={len(manufacturer_objs)}")
     for i in manufacturer_objs:
         num = manufacturer_objs.index(i) + 1
@@ -164,8 +158,7 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     lines += _objects_lines(od, manufacturer_objs)
 
     with open(file_path, "w") as f:
-        for line in lines:
-            f.write(line + "\n")
+        f.writelines(line + "\n" for line in lines)
 
 
 def _objects_lines(od: canopen.ObjectDictionary, indexes: list[int]) -> list[str]:
@@ -183,7 +176,7 @@ def _objects_lines(od: canopen.ObjectDictionary, indexes: list[int]) -> list[str
     return lines
 
 
-def _variable_lines(variable: Variable, index: int, subindex: Optional[int] = None) -> list[str]:
+def _variable_lines(variable: Variable, index: int, subindex: int | None = None) -> list[str]:
     lines = []
 
     if subindex is None:
@@ -197,7 +190,7 @@ def _variable_lines(variable: Variable, index: int, subindex: Optional[int] = No
     lines.append(f"AccessType={variable.access_type}")
     if variable.default:  # optional
         if variable.data_type == canopen.objectdictionary.OCTET_STRING:
-            tmp = variable.default.hex(sep=" ")
+            tmp = cast(bytes, variable.default).hex(sep=" ")
             lines.append(f"DefaultValue={tmp}")
         elif variable.data_type == canopen.objectdictionary.BOOLEAN:
             lines.append(f"DefaultValue={int(variable.default)}")
@@ -242,11 +235,8 @@ def _record_lines(record: canopen.objectdictionary.Record, index: int) -> list[s
     return lines
 
 
-def gen_dcf(args: Optional[Namespace] = None) -> None:
+def gen_dcf(args: Namespace) -> None:
     """Gen_dcf main."""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
-
     config = OreSatConfig(args.oresat)
 
     if args.card.lower() == "all":

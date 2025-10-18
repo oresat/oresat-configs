@@ -9,18 +9,21 @@ from __future__ import annotations
 from dataclasses import InitVar, dataclass, field
 from enum import Enum, unique
 from importlib import abc, resources
-from types import ModuleType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 from . import oresat0, oresat0_5, oresat1
 
 __all__ = [
-    "__version__",
-    "MissionConsts",
     "Mission",
+    "MissionConsts",
+    "__version__",
 ]
 
 try:
-    from ._version import version as __version__  # type: ignore
+    from ._version import version as __version__
 except ImportError:
     __version__ = "0.0.0"  # package is not installed
 
@@ -36,7 +39,7 @@ class MissionConsts:
     beacon: abc.Traversable = field(init=False)
     overlays: dict[str, abc.Traversable] = field(default_factory=dict, init=False)
 
-    def __post_init__(self, paths):
+    def __post_init__(self, paths: ModuleType) -> None:
         base = resources.files(paths)
         object.__setattr__(self, "cards", base / "cards.csv")
         object.__setattr__(self, "beacon", base / "beacon.yaml")

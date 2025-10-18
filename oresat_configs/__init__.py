@@ -1,19 +1,17 @@
 """OreSat OD database"""
 
+from __future__ import annotations
+
 # Checks that pyyaml is installed correctly. For performance reasons it must use the libyaml C
 # bindings. To use them both libyaml must be installed on the local system, and pyyaml must have
 # been built to use them. This works correctly on x86 systems, but on arm pyyaml is built by
 # default to not include the bindings.
-try:
-    from yaml import CLoader
-except ImportError as e:
-    raise ImportError(
-        "pyyaml missing/installed without libyaml bindings. See oresat-configs README.md for more"
-    ) from e
+import yaml
 
-from dataclasses import dataclass
+if not hasattr(yaml, "CLoader"):
+    raise ImportError("pyyaml installed without libyaml bindings. See oresat-configs README.md")
+
 from importlib.resources import as_file
-from typing import Union
 
 from ._yaml_to_od import (
     _gen_c3_beacon_defs,
@@ -32,7 +30,7 @@ __all__ = ["Card", "Mission", "__version__"]
 class OreSatConfig:
     """All the configs for an OreSat mission."""
 
-    def __init__(self, mission: Union[Mission, str, None] = None):
+    def __init__(self, mission: Mission | str | None = None) -> None:
         """The parameter mission may be:
         - a string, either short or long mission name ('0', 'OreSat0.5', ...)
         - a Mission (ORESAT0, ...)

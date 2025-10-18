@@ -2,7 +2,7 @@
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 # -- Path setup --------------------------------------------------------------
 
@@ -20,7 +20,7 @@ from oresat_configs import __version__
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "OreSat Configs"
-copyright = f"{datetime.now().year}, Portland State Aerospace Society"  # pylint: disable=W0622
+copyright = f"{datetime.now(timezone.utc).year}, Portland State Aerospace Society"  # noqa: A001
 author = "PSAS"
 release = __version__
 

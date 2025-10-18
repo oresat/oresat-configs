@@ -1,22 +1,34 @@
 """Tools for working with PDOs"""
 
 import time
-from argparse import ArgumentParser, Namespace
-from typing import Any, Optional
+from argparse import Namespace
+from typing import Any
 
 import canopen
 
 from .. import Mission, OreSatConfig
 
-PDO = "list or receive PDOs from the specified card"
 
+def build_arguments(subparsers: Any) -> None:
+    """Build command line arguments for this script.
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
+    This function will be invoked by scripts.main to configure command line arguments for this
+    subcommand. Use subparsers.add_parser() to get an ArgumentParser. The parser must have the
+    default argument func which is the entry point for this subcommand: parser.set_defaults(func=?)
 
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
+    Parameters
+    ----------
+    subparsers
+        The output of ArgumentParser.add_subparsers() from the primary ArgumentParser. This function
+        should call add_parser() on this parameter to get the ArgumentParser that is used to
+        configure arguments for this subcommand.
+        See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of
+        that section, for more.
     """
-    parser.description = PDO
+    desc = "list or receive PDOs from the specified card"
+    parser = subparsers.add_parser("pdo", description=desc, help=desc)
+    parser.set_defaults(func=pdo_main)
+
     parser.add_argument(
         "--oresat",
         default=Mission.default().arg,
@@ -26,26 +38,15 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
     )
     parser.add_argument("card", help="card name")
     parser.add_argument(
-        "--list", action="store_true", help="list PDOs expected for the particular card"
+        "--list",
+        action="store_true",
+        help="list PDOs expected for the particular card",
     )
     parser.add_argument(
-        "--bus", default="vcan0", help="CAN bus to listen on, defaults to %(default)s"
+        "--bus",
+        default="vcan0",
+        help="CAN bus to listen on, defaults to %(default)s",
     )
-    return parser
-
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("pdo", help=PDO))
-    parser.set_defaults(func=pdo_main)
 
 
 typenames = {
@@ -133,10 +134,8 @@ def listpdos(node_id: int, od: canopen.ObjectDictionary) -> None:
         print(f"PDO {index:2} {pdo.cob_id:03X} ({ttype}) => {names}")
 
 
-def pdo_main(args: Optional[Namespace] = None) -> None:
+def pdo_main(args: Namespace) -> None:
     """The utility for managing PDOs"""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
 
     config = OreSatConfig(args.oresat)
     node_id = config.cards[args.card].node_id
