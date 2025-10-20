@@ -1,19 +1,19 @@
 """Configuration file for the Sphinx documentation builder."""
 
-import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 # -- Path setup --------------------------------------------------------------
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
+# documentation root, use Path.resolve to make it absolute, like shown here.
 
-sys.path.insert(0, os.path.abspath("."))
+sys.path.append(str(Path(__file__).parent.resolve()))
 from scripts.gen_beacon_rst import gen_beacon_rst_files
 
-sys.path.insert(0, os.path.abspath(".."))
+sys.path.append(str(Path(__file__).parent.parent.resolve()))
 from oresat_configs import __version__
 
 # -- Project information -----------------------------------------------------

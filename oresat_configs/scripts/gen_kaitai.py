@@ -1,6 +1,7 @@
 """Generate KaiTai for the beacon."""
 
 from argparse import Namespace
+from pathlib import Path
 from typing import Any, cast
 
 import canopen
@@ -41,6 +42,7 @@ def build_arguments(subparsers: Any) -> None:
         "-d",
         "--dir-path",
         default=".",
+        type=Path,
         help="Output directory path. (Default: %(default)s)",
     )
 
@@ -61,14 +63,14 @@ CANOPEN_TO_KAITAI_DT = {
 }
 
 
-def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
+def generate_kaitai(config: OreSatConfig) -> dict[str, Any]:
     """Write beacon configs to a kaitai file."""
 
     # Grab and format mission name
     filename = config.mission.filename()
 
     #  Setup pre-determined canned types
-    kaitai_data: Any = {
+    kaitai_data: dict[str, Any] = {
         "meta": {
             "id": filename,
             "title": f"{filename} Decoder Struct",
@@ -232,13 +234,14 @@ def write_kaitai(config: OreSatConfig, dir_path: str = ".") -> None:
     payload_size //= 8
     kaitai_data["types"]["i_frame"]["seq"][1]["size"] = payload_size
     kaitai_data["types"]["ui_frame"]["seq"][1]["size"] = payload_size
-
-    # Write kaitai to output file
-    with open(f"{dir_path}/{filename}.ksy", "w+") as file:
-        dump(kaitai_data, file)
+    return kaitai_data
 
 
 def gen_kaitai(args: Namespace) -> None:
     """Gen_kaitai main."""
     config = OreSatConfig(args.oresat)
-    write_kaitai(config, args.dir_path)
+    kaitai_data = generate_kaitai(config)
+
+    # Write kaitai to output file
+    with (args.dir_path / config.mission.filename()).with_suffix(".ksy").open("w") as file:
+        dump(kaitai_data, file)

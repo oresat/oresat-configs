@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import canopen
@@ -43,17 +44,19 @@ def build_arguments(subparsers: Any) -> None:
         help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument("card", help="card name; all, c3, gps, star_tracker_1, etc")
-    parser.add_argument("-d", "--dir-path", default=".", help='directory path; defautl "."')
+    parser.add_argument(
+        "-d", "--dir-path", default=".", type=Path, help='Directory path. (Default "%(default)s")'
+    )
 
 
-def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
+def write_od(od: canopen.ObjectDictionary, dir_path: Path) -> None:
     """Save an od/dcf file
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
-    dir_path: str
+    dir_path: Path
         Directory path of dcf to save.
     """
 
@@ -62,7 +65,7 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     assert dev_info.product_name is not None
     file_name = dev_info.product_name + ".dcf"
     file_name = file_name.lower().replace(" ", "_")
-    file_path = f"{dir_path}/{file_name}"
+    file_path = dir_path / file_name
     now = datetime.now(timezone.utc)
 
     # file info seciton
@@ -157,7 +160,7 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
 
     lines += _objects_lines(od, manufacturer_objs)
 
-    with open(file_path, "w") as f:
+    with file_path.open("w") as f:
         f.writelines(line + "\n" for line in lines)
 
 

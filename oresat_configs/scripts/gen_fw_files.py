@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 from itertools import chain
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
@@ -47,7 +47,9 @@ def build_arguments(subparsers: Any) -> None:
         "card",
         help="card name; c3, battery, solar, adcs, reaction_wheel, or diode_test",
     )
-    parser.add_argument("-d", "--dir-path", default=".", help='output directory path, default: "."')
+    parser.add_argument(
+        "-d", "--dir-path", default=".", type=Path, help='output directory path, default: "."'
+    )
     parser.add_argument(
         "-hw",
         "--hardware-version",
@@ -100,26 +102,30 @@ DATA_TYPE_C_SIZE = {
 }
 
 
-def write_canopennode(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
+def write_canopennode(od: canopen.ObjectDictionary, dir_path: Path) -> None:
     """Save an od/dcf as CANopenNode OD.[c/h] files
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         OD data structure to save as file
-    dir_path: str
+    dir_path: Path
         Path to directory to output OD.[c/h] to. If not set the same dir path as the od will
         be used.
     """
 
-    if dir_path[-1] == "/":
-        dir_path = dir_path[:-1]
+    if dir_path.exists() and not dir_path.is_dir():
+        print(f"'{dir_path}' already exists and is not a directory")
+        return
 
-    if not os.path.isdir(dir_path):
-        os.makedirs(dir_path)
+    odc = generate_canopennode_c(od)
+    odh = generate_canopennode_h(od)
 
-    write_canopennode_c(od, dir_path)
-    write_canopennode_h(od, dir_path)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    with (dir_path / "OD.c").open("w") as f:
+        f.writelines(line + "\n" for line in odc)
+    with (dir_path / "OD.h").open("w") as f:
+        f.writelines(line + "\n" for line in odh)
 
 
 def initializer(obj: Variable) -> str:
@@ -281,21 +287,16 @@ def obj_lines(od: canopen.ObjectDictionary, index: int) -> list[str]:
     ]
 
 
-def write_canopennode_c(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
+def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
     """Save an od/dcf as a CANopenNode OD.c file
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
-    dir_path: str
-        Path to directory to output OD.c to. If not set the same dir path as the od will
-        be used.
     """
 
     lines = []
-
-    file_path = dir_path + "/OD.c" if dir_path else "OD.c"
 
     lines.append("#define OD_DEFINITION")
     lines.append('#include "301/CO_ODinterface.h"')
@@ -357,9 +358,7 @@ def write_canopennode_c(od: canopen.ObjectDictionary, dir_path: str = ".") -> No
     lines.append("")
 
     lines.append("OD_t *OD = &_OD;")
-
-    with open(file_path, "w") as f:
-        f.writelines(line + "\n" for line in lines)
+    return lines
 
 
 def decl_type(obj: Variable, name: str) -> list[str]:
@@ -404,21 +403,18 @@ def _canopennode_h_lines(od: canopen.ObjectDictionary, index: int) -> list[str]:
     raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
 
 
-def write_canopennode_h(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
+def generate_canopennode_h(od: canopen.ObjectDictionary) -> list[str]:
     """Save an od/dcf as a CANopenNode OD.h file
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
-    dir_path: str
-        Path to directory to output OD.h to. If not set the same dir path as the od will
-        be used.
+    dir_path: Path
+        Path to directory to output OD.h to
     """
 
     lines = []
-
-    file_path = dir_path + "/OD.h" if dir_path else "OD.h"
 
     lines.append("#ifndef OD_H")
     lines.append("#define OD_H")
@@ -521,9 +517,7 @@ def write_canopennode_h(od: canopen.ObjectDictionary, dir_path: str = ".") -> No
                 lines += _make_bitfields_lines(obj[subindex])
 
     lines.append("#endif /* OD_H */")
-
-    with open(file_path, "w") as f:
-        f.writelines(line + "\n" for line in lines)
+    return lines
 
 
 def _make_enum_lines(obj: Variable) -> list[str]:

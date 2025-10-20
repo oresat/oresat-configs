@@ -65,7 +65,6 @@ ignore = [
     "TRY003",  # raise-vanilla-args - same as EM, maybe one day?
     "T20",  # flake8-print - Probably a good idea but not right now. Also how would scripts manage?
     "ERA001",  # commented-out-code - ostensibly a good idea but too many false positives
-    "PTH",  # flake8-use-pathllib - Should be re-enabled soon but not in this first pass
     "PLR0912",  # too-many-branches - Maybe one day, will require extensive refactoring
     "PLR0915",  # too-many-statements - Maybe one day, will require extensive refactoring
     "PLR2004",  # magic-value-comparison - Maybe one day, CANopen really likes raw hex
