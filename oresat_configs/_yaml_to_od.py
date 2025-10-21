@@ -236,33 +236,25 @@ def _add_objects(
 def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
     """Add tpdo objects to OD."""
 
-    tpdos = config.tpdos
-
-    for tpdo in tpdos:
+    for tpdo in config.tpdos:
         # FIXME: canopen is still working on improving their type annotations. nr_of_TXPDOs is
         #        marked as a bool which is clearly wrong. Remove the ignore when upstream fixes
         #        their types
         od.device_information.nr_of_TXPDO += 1  # type: ignore[operator,assignment]
 
-        comm_index = TPDO_COMM_START + tpdo.num - 1
         map_index = TPDO_PARA_START + tpdo.num - 1
-        comm_rec = canopen.objectdictionary.Record(
-            f"tpdo_{tpdo.num}_communication_parameters",
-            comm_index,
-        )
-        map_rec = canopen.objectdictionary.Record(f"tpdo_{tpdo.num}_mapping_parameters", map_index)
+        map_rec = Record(f"tpdo_{tpdo.num}_mapping_parameters", map_index)
         od.add_object(map_rec)
-        od.add_object(comm_rec)
 
         # index 0 for mapping index
-        var0 = canopen.objectdictionary.Variable("highest_index_supported", map_index, 0x0)
+        var0 = Variable("highest_index_supported", map_index, 0x0)
         var0.access_type = "const"
         var0.data_type = canopen.objectdictionary.UNSIGNED8
         map_rec.add_member(var0)
 
         for t_field in tpdo.fields:
             subindex = tpdo.fields.index(t_field) + 1
-            var = canopen.objectdictionary.Variable(
+            var = Variable(
                 f"mapping_object_{subindex}",
                 map_index,
                 subindex,
@@ -283,8 +275,12 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
 
         var0.default = len(map_rec) - 1
 
+        comm_index = TPDO_COMM_START + tpdo.num - 1
+        comm_rec = Record(f"tpdo_{tpdo.num}_communication_parameters", comm_index)
+        od.add_object(comm_rec)
+
         # index 0 for comms index
-        var0 = canopen.objectdictionary.Variable("highest_index_supported", comm_index, 0x0)
+        var0 = Variable("highest_index_supported", comm_index, 0x0)
         var0.access_type = "const"
         var0.data_type = canopen.objectdictionary.UNSIGNED8
         var0.default = 0x6
@@ -304,7 +300,7 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
             var.default |= 1 << 30  # rtr bit, 1 for no RTR allowed
         comm_rec.add_member(var)
 
-        var = canopen.objectdictionary.Variable("transmission_type", comm_index, 0x2)
+        var = Variable("transmission_type", comm_index, 0x2)
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED8
         if tpdo.transmission_type == "sync":
@@ -313,19 +309,19 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
             var.default = 254  # event driven
         comm_rec.add_member(var)
 
-        var = canopen.objectdictionary.Variable("inhibit_time", comm_index, 0x3)
+        var = Variable("inhibit_time", comm_index, 0x3)
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED16
         var.default = tpdo.inhibit_time_ms
         comm_rec.add_member(var)
 
-        var = canopen.objectdictionary.Variable("event_timer", comm_index, 0x5)
+        var = Variable("event_timer", comm_index, 0x5)
         var.access_type = "rw"
         var.data_type = canopen.objectdictionary.UNSIGNED16
         var.default = tpdo.event_timer_ms
         comm_rec.add_member(var)
 
-        var = canopen.objectdictionary.Variable("sync_start_value", comm_index, 0x6)
+        var = Variable("sync_start_value", comm_index, 0x6)
         var.access_type = "const"
         var.data_type = canopen.objectdictionary.UNSIGNED8
         var.default = tpdo.sync_start_value

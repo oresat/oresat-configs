@@ -49,15 +49,13 @@ def build_arguments(subparsers: Any) -> None:
     )
 
 
-def write_od(od: canopen.ObjectDictionary, dir_path: Path) -> None:
+def generate_dcf(od: canopen.ObjectDictionary) -> tuple[str, list[str]]:
     """Save an od/dcf file
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
-    dir_path: Path
-        Directory path of dcf to save.
     """
 
     lines = []
@@ -65,7 +63,6 @@ def write_od(od: canopen.ObjectDictionary, dir_path: Path) -> None:
     assert dev_info.product_name is not None
     file_name = dev_info.product_name + ".dcf"
     file_name = file_name.lower().replace(" ", "_")
-    file_path = dir_path / file_name
     now = datetime.now(timezone.utc)
 
     # file info seciton
@@ -159,9 +156,7 @@ def write_od(od: canopen.ObjectDictionary, dir_path: Path) -> None:
     lines.append("")
 
     lines += _objects_lines(od, manufacturer_objs)
-
-    with file_path.open("w") as f:
-        f.writelines(line + "\n" for line in lines)
+    return (file_name, lines)
 
 
 def _objects_lines(od: canopen.ObjectDictionary, indexes: list[int]) -> list[str]:
@@ -243,8 +238,11 @@ def gen_dcf(args: Namespace) -> None:
     config = OreSatConfig(args.oresat)
 
     if args.card.lower() == "all":
-        for od in config.od_db.values():
-            write_od(od, args.dir_path)
+        ods = list(config.od_db.values())
     else:
-        od = config.od_db[args.card.lower()]
-        write_od(od, args.dir_path)
+        ods = [config.od_db[args.card.lower()]]
+
+    for od in ods:
+        name, lines = generate_dcf(od)
+        with (args.dir_path / name).open("w") as f:
+            f.writelines(line + "\n" for line in lines)

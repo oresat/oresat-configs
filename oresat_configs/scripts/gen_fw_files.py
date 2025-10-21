@@ -102,30 +102,54 @@ DATA_TYPE_C_SIZE = {
 }
 
 
-def write_canopennode(od: canopen.ObjectDictionary, dir_path: Path) -> None:
-    """Save an od/dcf as CANopenNode OD.[c/h] files
+def generate_canopennode(name: str, od: canopen.ObjectDictionary) -> tuple[list[str], list[str]]:
+    """Create the text of CANopenNode OD.[c/h] files from the od
 
     Parameters
     ----------
-    od: canopen.ObjectDictionary
+    name:
+        Name of the object dictionary
+    od:
         OD data structure to save as file
-    dir_path: Path
-        Path to directory to output OD.[c/h] to. If not set the same dir path as the od will
-        be used.
     """
 
-    if dir_path.exists() and not dir_path.is_dir():
-        print(f"'{dir_path}' already exists and is not a directory")
-        return
+    # remove node id from emcy cob id
+    if 0x1014 in od:
+        emcy = od[0x1014]
+        assert isinstance(emcy, Variable)
+        emcy.default = 0x80
+
+    max_pdos = 12 if name == "c3" else 16
+    assert od.node_id is not None
+    tpdo_cob_ids = [0x180 + (0x100 * (i % 4)) + (i // 4) + od.node_id for i in range(max_pdos)]
+    rpdo_cob_ids = [i + 0x80 for i in tpdo_cob_ids]
+
+    def _remove_pdo_cob_ids(start: int, cob_ids: list[int]) -> None:
+        assert od.node_id is not None
+        for index in range(start, start + 0x1FF):
+            try:
+                obj = od[index]
+            except KeyError:
+                continue
+            assert isinstance(obj, Record)
+            default = obj[1].default
+            assert default is not None
+            if default & 0x7FF in cob_ids:
+                cob_id = (default - od.node_id) & 0xFFC
+                cob_id += default & 0xC0_00_00_00  # add back pdo flags (2 MSBs)
+            else:
+                cob_id = default
+            obj[1].default = cob_id
+
+    # remove node id from pdo cob ids
+    # FIXME: canopen's current type annotaton for nr_of_* is clearly wrong, remove cast once
+    #        upstream fixes it
+    _remove_pdo_cob_ids(0x1400, rpdo_cob_ids)
+    _remove_pdo_cob_ids(0x1800, tpdo_cob_ids)
 
     odc = generate_canopennode_c(od)
     odh = generate_canopennode_h(od)
-
-    dir_path.mkdir(parents=True, exist_ok=True)
-    with (dir_path / "OD.c").open("w") as f:
-        f.writelines(line + "\n" for line in odc)
-    with (dir_path / "OD.h").open("w") as f:
-        f.writelines(line + "\n" for line in odh)
+    return (odc, odh)
 
 
 def initializer(obj: Variable) -> str:
@@ -584,6 +608,10 @@ def gen_fw_files(args: Namespace) -> None:
     """generate CANopenNode firmware files main"""
     config = OreSatConfig(args.oresat)
 
+    if args.dir_path.exists() and not args.dir_path.is_dir():
+        print(f"'{args.dir_path}' already exists and is not a directory")
+        return
+
     arg_card = args.card.lower().replace("-", "_")
     if arg_card == "c3":
         od = config.od_db["c3"]
@@ -610,35 +638,10 @@ def gen_fw_files(args: Namespace) -> None:
     if args.firmware_version is not None:
         versions["fw_version"].default = args.firmware_version
 
-    # remove node id from emcy cob id
-    if 0x1014 in od:
-        emcy = od[0x1014]
-        assert isinstance(emcy, Variable)
-        emcy.default = 0x80
+    odc, odh = generate_canopennode(arg_card, od)
 
-    max_pdos = 12 if arg_card == "c3" else 16
-    assert od.node_id is not None
-    tpdo_cob_ids = [0x180 + (0x100 * (i % 4)) + (i // 4) + od.node_id for i in range(max_pdos)]
-    rpdo_cob_ids = [i + 0x80 for i in tpdo_cob_ids]
-
-    def _remove_pdo_cob_ids(start: int, num: int, cob_ids: list[int]) -> None:
-        for index in range(start, start + num):
-            obj = od[index]
-            assert isinstance(obj, Record)
-            default = obj[1].default
-            assert default is not None
-            if default & 0x7FF in cob_ids:
-                assert od.node_id is not None
-                cob_id = (default - od.node_id) & 0xFFC
-                cob_id += default & 0xC0_00_00_00  # add back pdo flags (2 MSBs)
-            else:
-                cob_id = default
-            obj[1].default = cob_id
-
-    # remove node id from pdo cob ids
-    # FIXME: canopen's current type annotaton for nr_of_* is clearly wrong, remove cast once
-    #        upstream fixes it
-    _remove_pdo_cob_ids(0x1400, cast(int, od.device_information.nr_of_RXPDO), rpdo_cob_ids)
-    _remove_pdo_cob_ids(0x1800, cast(int, od.device_information.nr_of_TXPDO), tpdo_cob_ids)
-
-    write_canopennode(od, args.dir_path)
+    args.dir_path.mkdir(parents=True, exist_ok=True)
+    with (args.dir_path / "OD.c").open("w") as f:
+        f.writelines(line + "\n" for line in odc)
+    with (args.dir_path / "OD.h").open("w") as f:
+        f.writelines(line + "\n" for line in odh)

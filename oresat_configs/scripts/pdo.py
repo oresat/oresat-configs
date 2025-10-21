@@ -103,12 +103,12 @@ def print_map(m: canopen.pdo.base.Map) -> None:
     print(f'{m.cob_id:03X} {m.name} {" ".join(data)}')
 
 
-def listen(bus: str, node_id: int, od: canopen.ObjectDictionary) -> None:
+def listen(bus: str, od: canopen.ObjectDictionary) -> None:
     """Listens for PDOs from the given node, formats and prints them to stdout"""
     network = canopen.Network()
     network.connect(channel=bus, bustype="socketcan")
 
-    node = network.add_node(node_id, od)
+    node = network.add_node(0, od)
     node.tpdo.read(from_od=True)
     for pdo in node.tpdo.values():
         pdo.add_callback(print_map)
@@ -122,11 +122,11 @@ def listen(bus: str, node_id: int, od: canopen.ObjectDictionary) -> None:
         network.disconnect()
 
 
-def listpdos(node_id: int, od: canopen.ObjectDictionary) -> None:
+def listpdos(od: canopen.ObjectDictionary) -> None:
     """Prints PDO communication and associated mapping parameters for the given node"""
 
     network = canopen.Network()
-    node = network.add_node(node_id, od)
+    node = network.add_node(0, od)
     node.tpdo.read(from_od=True)
     for index, pdo in node.tpdo.items():
         ttype = transmission_type(pdo.trans_type)
@@ -138,10 +138,9 @@ def pdo_main(args: Namespace) -> None:
     """The utility for managing PDOs"""
 
     config = OreSatConfig(args.oresat)
-    node_id = config.cards[args.card].node_id
     od = config.od_db[args.card]
 
     if args.list:
-        listpdos(node_id, od)
+        listpdos(od)
     else:
-        listen(args.bus, node_id, od)
+        listen(args.bus, od)
