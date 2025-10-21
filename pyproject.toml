@@ -83,8 +83,11 @@ ignore = [
     "S101",  # assert - Should be eventually fixed but for now helps with type checking
     "ANN401",  # any-type - Should be eventually fixed but for now helps with type checking
     "D",  # pydocstyle - Should be turned back on but documentation is a large task
-    "T20",  # flake8-print - Probably a good idea but not right now. Also how would scripts manage?
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts using print() is fine, it even explicitly mentions this in the docs
+"oresat_configs/scripts/*" = [ "T20" ] # flake8-print
 
 [tool.ruff.format]
 quote-style = "preserve"
