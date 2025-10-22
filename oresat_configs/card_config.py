@@ -4,36 +4,103 @@
 # ruff: noqa: UP007, UP045
 from __future__ import annotations
 
+from collections.abc import Mapping  # noqa: TC003 dacite uses type information at runtime
 from dataclasses import dataclass, field
 from functools import cache
-from typing import TYPE_CHECKING, Any, Optional, Union
+from itertools import chain
+from typing import TYPE_CHECKING, Literal, NamedTuple, Optional, Union, cast
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-from dacite import from_dict
+from canopen.objectdictionary import (
+    BOOLEAN,
+    DATA_TYPES,
+    DOMAIN,
+    INTEGER8,
+    INTEGER16,
+    INTEGER32,
+    INTEGER64,
+    OCTET_STRING,
+    REAL32,
+    REAL64,
+    UNSIGNED8,
+    UNSIGNED16,
+    UNSIGNED32,
+    UNSIGNED64,
+    VISIBLE_STRING,
+    ODArray,
+    ODRecord,
+    ODVariable,
+)
+from dacite import Config, from_dict
 from yaml import CLoader, load
+
+DataType = Literal[
+    'bool',
+    'int8',
+    'int16',
+    'int32',
+    'int64',
+    'uint8',
+    'uint16',
+    'uint32',
+    'uint64',
+    'float32',
+    'float64',
+    'str',
+    'octet_str',
+    'domain',
+]
+
+
+class DataTypeDefault(NamedTuple):
+    od_type: int
+    default: bool | int | float | str | bytes | None
+    size: int
+    low_limit: int | None
+    high_limit: int | None
+
+
+DATA_TYPE_DEFAULTS = {
+    'bool': DataTypeDefault(BOOLEAN, False, 8, None, None),  # noqa: FBT003
+    'int8': DataTypeDefault(INTEGER8, 0, 8, -(2**7), 2**7 - 1),
+    'int16': DataTypeDefault(INTEGER16, 0, 16, -(2**15), 2**15 - 1),
+    'int32': DataTypeDefault(INTEGER32, 0, 32, -(2**31), 2**31 - 1),
+    'int64': DataTypeDefault(INTEGER64, 0, 64, -(2**63), 2**63 - 1),
+    'uint8': DataTypeDefault(UNSIGNED8, 0, 8, 0, 2**8 - 1),
+    'uint16': DataTypeDefault(UNSIGNED16, 0, 16, 0, 2**16 - 1),
+    'uint32': DataTypeDefault(UNSIGNED32, 0, 32, 0, 2**32 - 1),
+    'uint64': DataTypeDefault(UNSIGNED64, 0, 64, 0, 2**64 - 1),
+    'float32': DataTypeDefault(REAL32, 0.0, 32, None, None),
+    'float64': DataTypeDefault(REAL64, 0.0, 64, None, None),
+    'str': DataTypeDefault(VISIBLE_STRING, "", 0, None, None),
+    'octet_str': DataTypeDefault(OCTET_STRING, b"", 0, None, None),
+    'domain': DataTypeDefault(DOMAIN, None, 0, None, None),
+}
 
 
 @dataclass
 class ConfigObject:
     """Object in config."""
 
-    data_type: str = "uint32"
+    name: str = ""
+    """Name of object, must be in lower_snake_case."""
+    data_type: DataType = "domain"
     """Data type of the object."""
     length: int = 1
     """Length of an octet string object (only used when `data_type` is set to ``"octet_str"``)."""
-    access_type: str = "rw"
+    access_type: Literal['rw', 'ro', 'wo', 'const'] = "rw"
     """
     Access type of object over the CAN bus, can be ``"rw"``, ``"ro"``, ``"wo"``, or ``"const"``.
     """
-    default: Any = None
+    default: Union[bool, int, float, str, bytes, None] = None
     """Default value of object."""
     description: str = ""
     """Description of object."""
     value_descriptions: dict[str, int] = field(default_factory=dict)
     """Optional: Can be used to define enum values for an unsigned integer data types."""
-    bit_definitions: dict[str, Union[int, str]] = field(default_factory=dict)
+    bit_definitions: Mapping[str, Union[int, str, list[int]]] = field(default_factory=dict)
     """Optional: Can be used to define bitfield of an unsigned integer data types."""
     unit: str = ""
     """Optional engineering unit for the object."""
@@ -49,6 +116,125 @@ class ConfigObject:
     The higher raw limit for value. No need to set this if it limit is the higher limit of the data
     type.
     """
+
+    def __post_init__(self) -> None:
+        # Because self.bit_definitions values are a union the type checker can't reason that we
+        # later fixed all the values to be just list[int]. This local helps the type checker later
+        # on when we use it assuming just list[int].
+        bit_definitions: dict[str, list[int]] = {}
+        for name, bits in self.bit_definitions.items():
+            if isinstance(bits, int):
+                bit_definitions[name] = [bits]
+            elif isinstance(bits, str) and "-" in bits:
+                low, high = sorted(int(i) for i in bits.split("-"))
+                bit_definitions[name] = list(range(low, high + 1))
+            elif isinstance(bits, list):
+                bit_definitions[name] = bits  # Already in correct format
+            else:
+                raise TypeError(f'Invalid bitdef {name}:{bits}')
+
+        bits = list(chain.from_iterable(bit_definitions.values()))
+        if len(bits) != len(set(bits)):
+            raise ValueError(f"{self.name} bit definitions overlap")
+
+        if self.value_descriptions and self.bit_definitions:
+            raise ValueError(f"{self.name} must not have both value descriptions and bit defs")
+
+        if self.value_descriptions and self.data_type in ('str', 'octet_str', 'domain'):
+            raise TypeError(
+                f"{self.name} Value descriptions given for invalid type {self.data_type}"
+            )
+
+        if self.bit_definitions and self.data_type not in ('uint8', 'uint16', 'uint32', 'uint64'):
+            raise TypeError(f"{self.name} Bit definitions given for invalid type {self.data_type}")
+
+        if self.low_limit is None:
+            if self.value_descriptions:
+                self.low_limit = min(self.value_descriptions.values())
+            else:
+                self.low_limit = DATA_TYPE_DEFAULTS[self.data_type].low_limit
+
+        if self.high_limit is None:
+            if self.value_descriptions:
+                self.high_limit = max(self.value_descriptions.values())
+            else:
+                self.high_limit = DATA_TYPE_DEFAULTS[self.data_type].high_limit
+
+        if self.data_type == 'octet_str':
+            self.default = bytes(self.length)
+        elif self.default is None:
+            self.default = DATA_TYPE_DEFAULTS[self.data_type].default
+
+        if self.value_descriptions and self.default not in self.value_descriptions.values():
+            raise ValueError(
+                f"{self.name} default value {self.default!r} not in value descriptions"
+            )
+
+        if self.data_type in ('str', 'octet_str', 'domain'):
+            if self.low_limit is not None:
+                raise ValueError(f"{self.name} Low limit set on type that doesn't support it")
+            if self.high_limit is not None:
+                raise ValueError(f"{self.name} High limit set on type that doesn't support it")
+
+        default_low = DATA_TYPE_DEFAULTS[self.data_type].low_limit
+        if self.low_limit is not None and default_low is not None:
+            if default_low > self.low_limit:
+                raise ValueError(f"{self.name} Low limit too small for type")
+            if self.default is None or isinstance(self.default, (str, bytes, bool)):
+                raise TypeError(f"{self.name} Default value invalid type {type(self.default)}")
+            if self.default < self.low_limit:
+                raise ValueError(
+                    f"{self.name} Default value {self.default} below low limit {self.low_limit}"
+                )
+
+        default_high = DATA_TYPE_DEFAULTS[self.data_type].high_limit
+        if self.high_limit is not None and default_high is not None:
+            if default_high < self.high_limit:
+                raise ValueError(f"{self.name} High limit too big for {self.data_type}")
+            if self.default is None or isinstance(self.default, (str, bytes, bool)):
+                raise TypeError(f"{self.name} Default value invalid type {type(self.default)}")
+            if self.default > self.high_limit:
+                raise ValueError(
+                    f"{self.name} Default value {self.default} above high limit {self.high_limit}"
+                )
+            if bit_definitions:
+                max_val = sum(2**n for n in chain.from_iterable(bit_definitions.values()))
+                if max_val > self.high_limit:
+                    raise ValueError(
+                        f"{self.name} type {self.data_type} unable to contain bit defs"
+                    )
+        self.bit_definitions = bit_definitions
+
+    def _to_variable(self, index: int, subindex: int = 0, name: str = '') -> ODVariable:
+        var = ODVariable(name or self.name, index, subindex)
+        var.unit = self.unit
+        var.factor = self.scale_factor
+        var.data_type = DATA_TYPE_DEFAULTS[self.data_type].od_type
+        for descr, value in self.value_descriptions.items():
+            var.add_value_description(value, descr)
+        for descr, bits in self.bit_definitions.items():
+            if not isinstance(bits, list):
+                raise TypeError("__post_init__ bit conversion didn't convert correctly")
+            var.add_bit_definition(descr, bits)
+        var.min = self.low_limit
+        var.max = self.high_limit
+
+        # FIXME: canopen is still working out the type annotations for their codebase. var.default
+        #        should be Union[bool, int, float, str, bytes, None] but is only Optional[int].
+        #        Remove cast when they fix it upstream.
+        var.default = cast(int, self.default)
+        var.access_type = self.access_type
+        var.description = self.description
+        if var.data_type in DATA_TYPES:
+            var.pdo_mappable = False
+        else:
+            var.pdo_mappable = True
+
+        #: Is the default value relative to the node-ID (only applies to COB-IDs)
+        # self.relative = False
+        #: Storage location of index
+        # self.storage_location = None
+        return var
 
 
 @dataclass
@@ -108,10 +294,23 @@ class GenerateSubindex(ConfigObject):
           scale_factor: 0.001
     """
 
-    name: str = ""
-    """Names of objects to generate."""
-    subindexes: Union[str, int] = 0
+    subindexes: Optional[Literal['fixed_length', 'node_ids']] = None
     """Subindexes of objects to generate."""
+
+    def to_entry(self, index: int, node_ids: dict[str, int]) -> list[ODVariable]:
+        if self.subindexes == 'fixed_length':
+            return [
+                self._to_variable(index, subindex, f"{self.name}_{subindex}")
+                for subindex in range(1, self.length + 1)
+            ]
+
+        if self.subindexes == 'node_ids':
+            # a node_id of 0 is flag for not on can bus
+            return [
+                self._to_variable(index, node, name) for name, node in node_ids.items() if node != 0
+            ]
+
+        raise ValueError(f"Invalid subindexes {self.subindexes}")
 
 
 @dataclass
@@ -130,13 +329,14 @@ class SubindexObject(ConfigObject):
         access_type: ro
     """
 
-    name: str = ""
-    """Name of object, must be in lower_snake_case."""
     subindex: int = 0
     """
     Subindex of object, start at subindex 1 (subindex 0 aka highest_index_supported will be
     generated).
     """
+
+    def to_entry(self, index: int) -> ODVariable:
+        return self._to_variable(index, self.subindex)
 
 
 @dataclass
@@ -156,8 +356,6 @@ class IndexObject(ConfigObject):
             event_timer_ms: 30000
     """
 
-    name: str = ""
-    """Name of object, must be in lower_snake_case."""
     index: int = 0
     """Index of object, fw/sw common object are in 0x3000, card objects are in 0x4000."""
     object_type: str = "variable"
@@ -166,6 +364,57 @@ class IndexObject(ConfigObject):
     """Defines subindexes for records and arrays."""
     generate_subindexes: Optional[GenerateSubindex] = None
     """Used to generate subindexes for arrays."""
+
+    def to_entry(self, node_ids: dict[str, int]) -> Union[ODArray, ODRecord, ODVariable]:
+        if self.object_type == 'variable':
+            if self.subindexes:
+                raise ValueError("Variable object has subindexes")
+            if self.generate_subindexes:
+                raise ValueError("Variable object has generate_subindexes")
+            return self._to_variable(self.index)
+
+        if self.object_type == 'array':
+            if self.subindexes and self.generate_subindexes:
+                raise ValueError("Array object must have either subindexes or generate_subindexes")
+            if not self.subindexes and not self.generate_subindexes:
+                raise ValueError("Array object must have either subindexes or generate_subindexes")
+            return self._to_array(node_ids)
+
+        if self.object_type == 'record':
+            if self.generate_subindexes:
+                raise ValueError("Record object must not have generate_subindexes")
+            return self._to_record()
+
+        raise ValueError(f"Invalid object type {self.object_type}")
+
+    def _to_array(self, node_ids: dict[str, int]) -> ODArray:
+        arr = ODArray(self.name, self.index)
+        for subindex in self.subindexes:
+            arr.add_member(subindex.to_entry(self.index))
+        if self.generate_subindexes:
+            for entry in self.generate_subindexes.to_entry(self.index, node_ids):
+                arr.add_member(entry)
+        self._add_entry_0(arr)
+        return arr
+
+    def _to_record(self) -> ODRecord:
+        rec = ODRecord(self.name, self.index)
+        for subindex in self.subindexes:
+            rec.add_member(subindex.to_entry(self.index))
+        self._add_entry_0(rec)
+        return rec
+
+    @staticmethod
+    def _add_entry_0(entry: ODArray | ODRecord) -> None:
+        var = ODVariable("highest_index_supported", entry.index, 0x0)
+        var.access_type = "const"
+        var.data_type = UNSIGNED8
+        var.default = max(entry) if len(entry) else 0
+        entry.add_member(var)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> IndexObject:
+        return from_dict(data_class=cls, data=data, config=Config(strict=True))
 
 
 @dataclass
@@ -279,4 +528,4 @@ class CardConfig:
 
         with config_path.open() as f:
             config_raw = load(f, Loader=CLoader)
-        return from_dict(data_class=cls, data=config_raw)
+        return from_dict(data_class=cls, data=config_raw, config=Config(strict=True))

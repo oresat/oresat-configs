@@ -6,7 +6,7 @@ from typing import Any
 import canopen
 
 from .. import Mission, OreSatConfig
-from .._yaml_to_od import STR_2_OD_DATA_TYPE
+from ..card_config import DATA_TYPE_DEFAULTS
 
 
 def build_arguments(subparsers: Any) -> None:
@@ -52,7 +52,7 @@ def print_od(args: Namespace) -> None:
     """The print-od main"""
     config = OreSatConfig(args.oresat)
 
-    inverted_od_data_types = {datatype: name for name, datatype in STR_2_OD_DATA_TYPE.items()}
+    inverted_od_data_types = {dt.od_type: name for name, dt in DATA_TYPE_DEFAULTS.items()}
 
     arg_card = args.card.lower().replace("-", "_")
 

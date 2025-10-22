@@ -4,16 +4,15 @@ from __future__ import annotations
 
 from copy import deepcopy
 from importlib import abc, resources
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, cast
 
 import canopen
 from canopen import ObjectDictionary
 from canopen.objectdictionary import Array, Record, Variable
-from dacite import from_dict
 from yaml import CLoader, load
 
 from . import base
-from .card_config import CardConfig, ConfigObject, IndexObject, SubindexObject
+from .card_config import CardConfig, IndexObject
 from .constants import Mission, __version__
 
 if TYPE_CHECKING:
@@ -28,209 +27,23 @@ RPDO_PARA_START = 0x1600
 TPDO_COMM_START = 0x1800
 TPDO_PARA_START = 0x1A00
 
-STR_2_OD_DATA_TYPE = {
-    "bool": canopen.objectdictionary.BOOLEAN,
-    "int8": canopen.objectdictionary.INTEGER8,
-    "int16": canopen.objectdictionary.INTEGER16,
-    "int32": canopen.objectdictionary.INTEGER32,
-    "int64": canopen.objectdictionary.INTEGER64,
-    "uint8": canopen.objectdictionary.UNSIGNED8,
-    "uint16": canopen.objectdictionary.UNSIGNED16,
-    "uint32": canopen.objectdictionary.UNSIGNED32,
-    "uint64": canopen.objectdictionary.UNSIGNED64,
-    "float32": canopen.objectdictionary.REAL32,
-    "float64": canopen.objectdictionary.REAL64,
-    "str": canopen.objectdictionary.VISIBLE_STRING,
-    "octet_str": canopen.objectdictionary.OCTET_STRING,
-    "domain": canopen.objectdictionary.DOMAIN,
+
+OD_DATA_SIZE = {
+    canopen.objectdictionary.BOOLEAN: 8,
+    canopen.objectdictionary.INTEGER8: 8,
+    canopen.objectdictionary.INTEGER16: 16,
+    canopen.objectdictionary.INTEGER32: 32,
+    canopen.objectdictionary.INTEGER64: 64,
+    canopen.objectdictionary.UNSIGNED8: 8,
+    canopen.objectdictionary.UNSIGNED16: 16,
+    canopen.objectdictionary.UNSIGNED32: 32,
+    canopen.objectdictionary.UNSIGNED64: 64,
+    canopen.objectdictionary.REAL32: 32,
+    canopen.objectdictionary.REAL64: 64,
+    canopen.objectdictionary.VISIBLE_STRING: 0,
+    canopen.objectdictionary.OCTET_STRING: 0,
+    canopen.objectdictionary.DOMAIN: 0,
 }
-
-
-class OdDataTypeInfo(NamedTuple):
-    default: bool | int | float | str | bytes | None
-    size: int
-    low_limit: int | None
-    high_limit: int | None
-
-
-OD_DATA_TYPES = {
-    canopen.objectdictionary.BOOLEAN: OdDataTypeInfo(False, 8, None, None),  # noqa: FBT003
-    canopen.objectdictionary.INTEGER8: OdDataTypeInfo(0, 8, -(2**8) // 2, 2**8 // 2 - 1),
-    canopen.objectdictionary.INTEGER16: OdDataTypeInfo(0, 16, -(2**16) // 2, 2**16 // 2 - 1),
-    canopen.objectdictionary.INTEGER32: OdDataTypeInfo(0, 16, -(2**32) // 2, 2**32 // 2 - 1),
-    canopen.objectdictionary.INTEGER64: OdDataTypeInfo(0, 16, -(2**64) // 2, 2**64 // 2 - 1),
-    canopen.objectdictionary.UNSIGNED8: OdDataTypeInfo(0, 8, 0, 2**8 - 1),
-    canopen.objectdictionary.UNSIGNED16: OdDataTypeInfo(0, 16, 0, 2**16 - 1),
-    canopen.objectdictionary.UNSIGNED32: OdDataTypeInfo(0, 32, 0, 2**32 - 1),
-    canopen.objectdictionary.UNSIGNED64: OdDataTypeInfo(0, 64, 0, 2**64 - 1),
-    canopen.objectdictionary.REAL32: OdDataTypeInfo(0.0, 32, None, None),
-    canopen.objectdictionary.REAL64: OdDataTypeInfo(0.0, 64, None, None),
-    canopen.objectdictionary.VISIBLE_STRING: OdDataTypeInfo("", 0, None, None),
-    canopen.objectdictionary.OCTET_STRING: OdDataTypeInfo(b"", 0, None, None),
-    canopen.objectdictionary.DOMAIN: OdDataTypeInfo(None, 0, None, None),
-}
-
-DYNAMIC_LEN_DATA_TYPES = [
-    canopen.objectdictionary.VISIBLE_STRING,
-    canopen.objectdictionary.OCTET_STRING,
-    canopen.objectdictionary.DOMAIN,
-]
-
-
-def _set_var_default(obj: ConfigObject, var: Variable) -> None:
-    """Set the variables default value based off of configs."""
-
-    default = obj.default
-    if obj.data_type == "octet_str":
-        default = b"\x00" * obj.length
-    elif default is None:
-        assert var.data_type is not None
-        default = OD_DATA_TYPES[var.data_type].default
-    elif var.data_type in canopen.objectdictionary.INTEGER_TYPES and isinstance(default, str):
-        # remove node id
-        if "+$NODE_ID" in default:
-            default = default.split("+")[0]
-        elif "$NODE_ID+" in default:
-            # FIXME: canopen is still working out the type annotations for their codebase. Default
-            #        should be Union[int, str, bytes, None] but is only Optional[int]. Remove cast
-            #        when they fix it upstream.
-            default = cast(str, var.default).split("+")[1]
-
-        default = int(default, 0)
-    var.default = default
-
-
-def _parse_bit_definitions(obj: ConfigObject) -> dict[str, list[int]]:
-    bit_defs = {}
-    for name, bits in obj.bit_definitions.items():
-        if isinstance(bits, int):
-            bit_defs[name] = [bits]
-        elif isinstance(bits, list):
-            bit_defs[name] = bits
-        elif isinstance(bits, str) and "-" in bits:
-            low, high = sorted([int(i) for i in bits.split("-")])
-            bit_defs[name] = list(range(low, high + 1))
-    return bit_defs
-
-
-def _make_var(obj: IndexObject | SubindexObject, index: int, subindex: int = 0) -> Variable:
-    var = canopen.objectdictionary.Variable(obj.name, index, subindex)
-    var.access_type = obj.access_type
-    var.description = obj.description
-    var.bit_definitions = _parse_bit_definitions(obj)
-    for name, value in obj.value_descriptions.items():
-        var.add_value_description(value, name)
-    var.unit = obj.unit
-    if obj.scale_factor != 1:
-        var.factor = obj.scale_factor
-    var.data_type = STR_2_OD_DATA_TYPE[obj.data_type]
-    _set_var_default(obj, var)
-    if var.data_type not in DYNAMIC_LEN_DATA_TYPES:
-        var.pdo_mappable = True
-    if obj.value_descriptions:
-        var.max = obj.high_limit or max(obj.value_descriptions.values())
-        var.min = obj.low_limit or min(obj.value_descriptions.values())
-    else:
-        var.max = obj.high_limit
-        var.min = obj.low_limit
-    return var
-
-
-def _make_rec(obj: IndexObject) -> Record:
-    index = obj.index
-    rec = canopen.objectdictionary.Record(obj.name, index)
-
-    var0 = canopen.objectdictionary.Variable("highest_index_supported", index, 0x0)
-    var0.access_type = "const"
-    var0.data_type = canopen.objectdictionary.UNSIGNED8
-    rec.add_member(var0)
-
-    for sub_obj in obj.subindexes:
-        if sub_obj.subindex in rec.subindices:
-            raise ValueError(f"subindex 0x{sub_obj.subindex:X} already in record")
-        var = _make_var(sub_obj, index, sub_obj.subindex)
-        rec.add_member(var)
-        var0.default = sub_obj.subindex
-
-    return rec
-
-
-def _make_arr(obj: IndexObject, node_ids: dict[str, int]) -> Array:
-    index = obj.index
-    arr = canopen.objectdictionary.Array(obj.name, index)
-
-    var0 = canopen.objectdictionary.Variable("highest_index_supported", index, 0x0)
-    var0.access_type = "const"
-    var0.data_type = canopen.objectdictionary.UNSIGNED8
-    arr.add_member(var0)
-
-    subindexes = []
-    names = []
-    gen_sub = obj.generate_subindexes
-    if gen_sub is not None:
-        if gen_sub.subindexes == "fixed_length":
-            subindexes = list(range(1, gen_sub.length + 1))
-            names = [f"{gen_sub.name}_{subindex}" for subindex in subindexes]
-        elif gen_sub.subindexes == "node_ids":
-            for name, sub in node_ids.items():
-                if sub == 0:
-                    continue  # a node_id of 0 is flag for not on can bus
-                names.append(name)
-                subindexes.append(sub)
-
-        for subindex, name in zip(subindexes, names):
-            if subindex in arr.subindices:
-                raise ValueError(f"subindex 0x{subindex:X} already in array")
-            var = canopen.objectdictionary.Variable(name, index, subindex)
-            var.access_type = gen_sub.access_type
-            var.data_type = STR_2_OD_DATA_TYPE[gen_sub.data_type]
-            var.bit_definitions = _parse_bit_definitions(gen_sub)
-            for name, value in gen_sub.value_descriptions.items():
-                var.add_value_description(value, name)
-            var.unit = gen_sub.unit
-            var.factor = gen_sub.scale_factor
-            if obj.value_descriptions:
-                var.max = gen_sub.high_limit or max(gen_sub.value_descriptions.values())
-                var.min = gen_sub.low_limit or min(gen_sub.value_descriptions.values())
-            else:
-                var.max = gen_sub.high_limit
-                var.min = gen_sub.low_limit
-            _set_var_default(gen_sub, var)
-            if var.data_type not in DYNAMIC_LEN_DATA_TYPES:
-                var.pdo_mappable = True
-            arr.add_member(var)
-            var0.default = subindex
-    else:
-        for sub_obj in obj.subindexes:
-            if sub_obj.subindex in arr.subindices:
-                raise ValueError(f"subindex 0x{sub_obj.subindex:X} already in array")
-            var = _make_var(sub_obj, index, sub_obj.subindex)
-            arr.add_member(var)
-            var0.default = sub_obj.subindex
-
-    return arr
-
-
-def _add_objects(
-    od: ObjectDictionary,
-    objects: list[IndexObject],
-    node_ids: dict[str, int],
-) -> None:
-    """File a objectdictionary with all the objects."""
-
-    for obj in objects:
-        if obj.index in od.indices:
-            raise ValueError(f"index 0x{obj.index:X} already in OD")
-
-        if obj.object_type == "variable":
-            var = _make_var(obj, obj.index)
-            od.add_object(var)
-        elif obj.object_type == "record":
-            rec = _make_rec(obj)
-            od.add_object(rec)
-        elif obj.object_type == "array":
-            arr = _make_arr(obj, node_ids)
-            od.add_object(arr)
 
 
 def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
@@ -269,7 +82,7 @@ def _add_tpdo_data(od: ObjectDictionary, config: CardConfig) -> None:
             value = mapped_obj.index << 16
             value += mapped_subindex << 8
             assert mapped_obj.data_type is not None
-            value += OD_DATA_TYPES[mapped_obj.data_type].size
+            value += OD_DATA_SIZE[mapped_obj.data_type]
             var.default = value
             map_rec.add_member(var)
 
@@ -467,7 +280,7 @@ def _add_rpdo_data(
             rpdo_mapped_obj = obj[rpdo_mapped_subindex]
         assert isinstance(rpdo_mapped_obj, Variable)
         assert rpdo_mapped_obj.data_type is not None
-        value += OD_DATA_TYPES[rpdo_mapped_obj.data_type].size
+        value += OD_DATA_SIZE[rpdo_mapped_obj.data_type]
         var.default = value
         rpdo_mapping_rec.add_member(var)
 
@@ -505,27 +318,6 @@ def _add_all_rpdo_data(
             continue
 
         _add_rpdo_data(i, master_node_od, node_od, node_name)
-
-
-def _load_std_objs(
-    file_path: abc.Traversable,
-    node_ids: dict[str, int],
-) -> dict[str, Variable | Record | Array]:
-    """Load the standard objects."""
-
-    with resources.as_file(file_path) as path, path.open() as f:
-        std_objs_raw = load(f, Loader=CLoader)
-
-    std_objs: dict[str, Variable | Record | Array] = {}
-    for obj_raw in std_objs_raw:
-        obj = from_dict(data_class=IndexObject, data=obj_raw)
-        if obj.object_type == "variable":
-            std_objs[obj.name] = _make_var(obj, obj.index)
-        elif obj.object_type == "record":
-            std_objs[obj.name] = _make_rec(obj)
-        elif obj.object_type == "array":
-            std_objs[obj.name] = _make_arr(obj, node_ids)
-    return std_objs
 
 
 def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None:
@@ -644,7 +436,8 @@ def _gen_od_db(
     node_ids = {name: cards[name].node_id for name in configs}
     node_ids["c3"] = 0x1
 
-    std_objs = _load_std_objs(STD_OBJS_FILE_NAME, node_ids)
+    with resources.as_file(STD_OBJS_FILE_NAME) as path, path.open() as f:
+        std_objs_raw = load(f, Loader=CLoader)
 
     # make od with common and card objects and tpdos
     for name, config in configs.items():
@@ -667,16 +460,19 @@ def _gen_od_db(
         od.device_information.nr_of_TXPDO = 0  # type: ignore[assignment]
         od.device_information.LSS_supported = False
 
-        # add common and card records
-        _add_objects(od, config.objects, node_ids)
+        # add card objects
+        for obj in config.objects:
+            if obj.index in od.indices:
+                raise ValueError(f"index 0x{obj.index:X} already in OD")
+            od.add_object(obj.to_entry(node_ids))
 
         # add any standard objects
-        for obj_name in config.std_objects:
-            od[std_objs[obj_name].index] = deepcopy(std_objs[obj_name])
-            if obj_name == "cob_id_emergency_message":
-                obj = od["cob_id_emergency_message"]
-                assert isinstance(obj, Variable)
-                obj.default = 0x80 + cards[name].node_id
+        for obj_raw in std_objs_raw:
+            if obj_raw['name'] in config.std_objects:
+                obj = IndexObject.from_dict(obj_raw)
+                if obj.name == "cob_id_emergency_message":
+                    obj.default = 0x80 + cards[name].node_id
+                od.add_object(obj.to_entry(node_ids))
 
         # add TPDSs
         _add_tpdo_data(od, config)
@@ -720,11 +516,10 @@ def _gen_od_db(
 
     # set all object values to its default value
     for od in od_db.values():
-        for index in od:
-            entry = od[index]
+        for entry in od.values():
             if not isinstance(entry, Variable):
-                for subindex in entry:
-                    entry[subindex].value = entry[subindex].default
+                for subentry in entry.values():
+                    subentry.value = subentry.default
             else:
                 entry.value = entry.default
 
@@ -794,15 +589,20 @@ def _gen_fw_base_od(mission: Mission) -> canopen.ObjectDictionary:
     with resources.as_file(resources.files(base) / "fw_common.yaml") as path:
         config = CardConfig.from_yaml(path)
 
-    _add_objects(od, config.objects, {})
+    # add card objects
+    for obj in config.objects:
+        if obj.index in od.indices:
+            raise ValueError(f"index 0x{obj.index:X} already in OD")
+        od.add_object(obj.to_entry({}))
 
-    std_objs = _load_std_objs(STD_OBJS_FILE_NAME, {})
-    for name in config.std_objects:
-        od[std_objs[name].index] = deepcopy(std_objs[name])
-        if name == "cob_id_emergency_message":
-            obj = od["cob_id_emergency_message"]
-            assert isinstance(obj, Variable)
-            obj.default = 0x80 + od.node_id
+    # add any standard objects
+    with resources.as_file(STD_OBJS_FILE_NAME) as path, path.open() as f:
+        for raw in load(f, Loader=CLoader):
+            if raw['name'] in config.std_objects:
+                obj = IndexObject.from_dict(raw)
+                if obj.name == "cob_id_emergency_message":
+                    obj.default = 0x80 + od.node_id
+                od.add_object(obj.to_entry({}))
 
     # add TPDSs
     _add_tpdo_data(od, config)

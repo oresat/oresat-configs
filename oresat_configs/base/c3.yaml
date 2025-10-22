@@ -374,10 +374,10 @@ objects:
         data_type: uint8
         description: enable/disable selected node on write or get current state by read
         value_descriptions:
-          disable: 0x1
-          enable: 0x2
-          fault: 0x3
-          dead: 0x4
+          disable: 0x0
+          enable: 0x1
+          fault: 0x2
+          dead: 0x3
           not_found: 0xff
         access_type: rw
 

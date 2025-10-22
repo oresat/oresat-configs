@@ -6,7 +6,7 @@ import canopen
 from canopen.objectdictionary import Array, Record
 
 from oresat_configs import OreSatConfig
-from oresat_configs._yaml_to_od import OD_DATA_TYPES, TPDO_COMM_START, TPDO_PARA_START
+from oresat_configs._yaml_to_od import OD_DATA_SIZE, TPDO_COMM_START, TPDO_PARA_START
 
 INT_MIN_MAX = {
     canopen.objectdictionary.INTEGER8: (-(2**7), 2**7 - 1),
@@ -53,7 +53,7 @@ class TestConfig:
                         f"{config.mission} {name} {mapped_obj.name} is not pdo mappable"
                     )
                     assert mapped_obj.data_type is not None
-                    size += OD_DATA_TYPES[mapped_obj.data_type].size
+                    size += OD_DATA_SIZE[mapped_obj.data_type]
                 assert size <= 64, f"{config.mission} {name} TPDO{i + 1} is more than 64 bits"
                 tpdos += 1
 
@@ -83,7 +83,7 @@ class TestConfig:
                 assert obj.data_type not in dynamic_len_data_types, (
                     f"{config.mission} {obj.name} is a dynamic length data type"
                 )
-                length += OD_DATA_TYPES[obj.data_type].size // 8  # bits to bytes
+                length += OD_DATA_SIZE[obj.data_type] // 8  # bits to bytes
 
         # AX.25 payload max length = 255
         # CRC32 length = 4
@@ -107,7 +107,7 @@ class TestConfig:
         """Test that a variable is valid."""
 
         assert isinstance(obj, canopen.objectdictionary.Variable)
-        assert obj.data_type in OD_DATA_TYPES
+        assert obj.data_type in OD_DATA_SIZE
         assert obj.access_type in ["ro", "wo", "rw", "rwr", "rww", "const"]
         assert isinstance(obj.data_type, int)
         self._test_snake_case(obj.name)

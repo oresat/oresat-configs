@@ -39,12 +39,10 @@ class TestConfigTypes:
         card_paths = [f for f in resources.files(base).iterdir() if f.name.endswith(".yaml")]
         card_paths.extend(mission.overlays.values())
         for path in card_paths:
-            from_dict(
-                CardConfig, self.load_yaml(path), Config(strict=True, strict_unions_match=True)
-            )
+            from_dict(CardConfig, self.load_yaml(path), Config(strict=True))
 
     def test_standard_types(self) -> None:
         """Tests the standard objects config. Each entry gets its own IndexObject"""
         path = _yaml_to_od.STD_OBJS_FILE_NAME
         for data in self.load_yaml(path):
-            from_dict(IndexObject, data, Config(strict=True, strict_unions_match=True))
+            from_dict(IndexObject, data, Config(strict=True))
