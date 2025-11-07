@@ -5,7 +5,7 @@ from oresat_configs import Mission, OreSatConfig
 from . import TestConfig
 
 
-class TestOreSat0_5(TestConfig):
+class TestOreSat05(TestConfig):
     """Test the OreSat0.5 OD database"""
 
     def setUp(self) -> None:

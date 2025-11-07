@@ -58,7 +58,9 @@ class TestConfig(unittest.TestCase):
                     )
                     size += OD_DATA_TYPES[mapped_obj.data_type].size
                 self.assertLessEqual(
-                    size, 64, f"{self.oresatid.name} {name} TPDO{i + 1} is more than 64 bits"
+                    size,
+                    64,
+                    f"{self.oresatid.name} {name} TPDO{i + 1} is more than 64 bits",
                 )
                 tpdos += 1
 
@@ -161,7 +163,8 @@ class TestConfig(unittest.TestCase):
             )
         elif obj.data_type == canopen.objectdictionary.DOMAIN:
             self.assertIsNone(
-                obj.default, f"{node_name} object 0x{obj.index:X} 0x{obj.subindex:02X} was not None"
+                obj.default,
+                f"{node_name} object 0x{obj.index:X} 0x{obj.subindex:02X} was not None",
             )
         else:
             raise ValueError(f"unsupported data_type {obj.data_type}")

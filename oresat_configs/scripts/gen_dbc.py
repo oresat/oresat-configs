@@ -1,13 +1,11 @@
 """Generate a DBC file for SavvyCAN."""
 
-from argparse import ArgumentParser, Namespace
-from typing import Optional
+from argparse import Namespace
+from typing import Any
 
-from canopen.objectdictionary import REAL32, REAL64, UNSIGNED_TYPES, Variable
+from canopen.objectdictionary import REAL32, REAL64, UNSIGNED_TYPES, Record, Variable
 
 from .. import Mission, OreSatConfig, __version__
-
-GEN_DBC = "generate dbc file for SavvyCAN"
 
 INDENT3 = " " * 3
 INDENT4 = " " * 4
@@ -119,12 +117,26 @@ TPDO_COMMS_INDEX_START = 0x1800
 TPDO_MAP_INDEX_START = 0x1A00
 
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
+def build_arguments(subparsers: Any) -> None:
+    """Build command line arguments for this script.
 
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
+    This function will be invoked by scripts.main to configure command line arguments for this
+    subcommand. Use subparsers.add_parser() to get an ArgumentParser. The parser must have the
+    default argument func which is the entry point for this subcommand: parser.set_defaults(func=?)
+
+    Parameters
+    ----------
+    subparsers
+        The output of ArgumentParser.add_subparsers() from the primary ArgumentParser. This function
+        should call add_parser() on this parameter to get the ArgumentParser that is used to
+        configure arguments for this subcommand.
+        See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of
+        that section, for more.
     """
-    parser.description = GEN_DBC
+    desc = "generate dbc file for SavvyCAN"
+    parser = subparsers.add_parser("dbc", description=desc, help=desc)
+    parser.set_defaults(func=gen_dbc)
+
     parser.add_argument(
         "--oresat",
         default=Mission.default().arg,
@@ -133,32 +145,14 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument("-d", "--dir-path", default=".", help='directory path; default "."')
-    return parser
 
 
-def register_subparser(subparsers):
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("dbc", help=GEN_DBC))
-    parser.set_defaults(func=gen_dbc)
-
-
-def write_dbc(config: OreSatConfig, dir_path: str = "."):
+def write_dbc(config: OreSatConfig, dir_path: str = ".") -> None:
     """Write CAN message/signal definitions to a dbc file."""
 
     mission = config.mission.name.lower()
     file_name = mission + ".dbc"
-    if dir_path:
-        file_path = f"{dir_path}/{file_name}"
-    else:
-        file_path = file_name
+    file_path = f"{dir_path}/{file_name}" if dir_path else file_name
 
     lines: list[str] = [
         f'VERSION "{__version__}"',
@@ -218,7 +212,8 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
     for name, od in config.od_db.items():
         if name not in cards:
             continue
-
+        assert od.node_id is not None
+        assert od.device_information.product_name is not None
         node_comments.append((od.node_id, od.device_information.product_name))
 
         # EMCYs
@@ -239,7 +234,7 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
         enums.append((cob_id, "emcy_error_code", EMCY_ERROR_CODES))
 
         # PDOs
-        for param_index in od:
+        for param_index, entry in od.items():
             if param_index >= RPDO_COMMS_INDEX_START and param_index < RPDO_MAP_INDEX_START:
                 pdo = "rpdo"
                 comms_index_start = RPDO_COMMS_INDEX_START
@@ -252,27 +247,32 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
             pdo_lines = []
             mapping_index = param_index + 0x200
             num = param_index - comms_index_start + 1
-            cob_id = od[param_index][1].value
+            cob_id = entry[1].value
             sb = 0
 
             pdos = 12 if name == "c3" else 16
             if cob_id & 0x7F not in [od.node_id + i for i in range(pdos // 4)]:
                 continue  # PDO for another node
 
-            for subindex in od[mapping_index].subindices:
+            mapping = od[mapping_index]
+            assert isinstance(mapping, Record)
+            for subindex in mapping.subindices:
                 if subindex == 0:
                     continue
 
-                val = od[mapping_index][subindex].default
+                val = mapping[subindex].default
+                assert val is not None
                 mapped_index = (val >> 16) & 0xFFFF
                 mapped_subindex = (val >> 8) & 0xFF
                 mapped_size = val & 0xFF
 
-                if isinstance(od[mapped_index], Variable):
-                    obj = od[mapped_index]
+                mapped = od[mapped_index]
+                if isinstance(mapped, Variable):
+                    obj = mapped
                     signal = obj.name
                 else:
-                    obj = od[mapped_index][mapped_subindex]
+                    obj = mapped[mapped_subindex]
+                    assert obj.parent is not None
                     signal = obj.parent.name + "_" + obj.name
 
                 # value fields
@@ -282,7 +282,7 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
                     high = obj.max if obj.max is not None else 0
                     pdo_lines.append(
                         f"{INDENT3}SG_ {signal} : {sb}|{mapped_size}@1{sign} ({obj.factor},0) "
-                        f'[{low}|{high}] "{obj.unit}" {VECTOR}'
+                        f'[{low}|{high}] "{obj.unit}" {VECTOR}',
                     )
 
                     if obj.description:
@@ -299,7 +299,7 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
                     bits = [bits] if isinstance(bits, int) else bits
                     pdo_lines.append(
                         f"{INDENT3}SG_ {n_signal} : {sb + max(bits)}|{len(bits)}@1+ (1,0) "
-                        f'[0|0] "" {VECTOR}'
+                        f'[0|0] "" {VECTOR}',
                     )
 
                 sb += mapped_size
@@ -402,14 +402,10 @@ def write_dbc(config: OreSatConfig, dir_path: str = "."):
         lines.append(f"SIG_VALTYPE_ {cob_id} {signal} : {value};")
 
     with open(file_path, "w") as f:
-        for line in lines:
-            f.write(line + "\n")
+        f.writelines(line + "\n" for line in lines)
 
 
-def gen_dbc(args: Optional[Namespace] = None):
+def gen_dbc(args: Namespace) -> None:
     """Gen_dbc main."""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
-
     config = OreSatConfig(args.oresat)
     write_dbc(config, args.dir_path)

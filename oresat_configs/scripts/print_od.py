@@ -1,22 +1,34 @@
 """Print out a card's objects directory."""
 
-from argparse import ArgumentParser, Namespace
-from typing import Any, Optional
+from argparse import Namespace
+from typing import Any
 
 import canopen
 
 from .. import Mission, OreSatConfig
 from .._yaml_to_od import STR_2_OD_DATA_TYPE
 
-PRINT_OD = "print the object dictionary out to stdout"
 
+def build_arguments(subparsers: Any) -> None:
+    """Build command line arguments for this script.
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
+    This function will be invoked by scripts.main to configure command line arguments for this
+    subcommand. Use subparsers.add_parser() to get an ArgumentParser. The parser must have the
+    default argument func which is the entry point for this subcommand: parser.set_defaults(func=?)
 
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
+    Parameters
+    ----------
+    subparsers
+        The output of ArgumentParser.add_subparsers() from the primary ArgumentParser. This function
+        should call add_parser() on this parameter to get the ArgumentParser that is used to
+        configure arguments for this subcommand.
+        See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of
+        that section, for more.
     """
-    parser.description = PRINT_OD
+    desc = "print the object dictionary out to stdout"
+    parser = subparsers.add_parser("od", description=desc, help=desc)
+    parser.set_defaults(func=print_od)
+
     parser.add_argument(
         "--oresat",
         default=Mission.default().arg,
@@ -25,21 +37,6 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument("card", help="card name; c3, gps, star_tracker_1, etc")
-    return parser
-
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("od", help=PRINT_OD))
-    parser.set_defaults(func=print_od)
 
 
 def format_default(value: Any) -> str:
@@ -51,28 +48,24 @@ def format_default(value: Any) -> str:
     return str(value)
 
 
-def print_od(args: Optional[Namespace] = None) -> None:
+def print_od(args: Namespace) -> None:
     """The print-od main"""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
-
     config = OreSatConfig(args.oresat)
 
-    inverted_od_data_types = {}
-    for key, value in STR_2_OD_DATA_TYPE.items():
-        inverted_od_data_types[value] = key
+    inverted_od_data_types = {datatype: name for name, datatype in STR_2_OD_DATA_TYPE.items()}
 
     arg_card = args.card.lower().replace("-", "_")
 
     od = config.od_db[arg_card]
-    for i in od:
-        if isinstance(od[i], canopen.objectdictionary.Variable):
-            data_type = inverted_od_data_types[od[i].data_type]
-            value = format_default(od[i].default)
-            print(f"0x{i:04X}: {od[i].name} - {data_type} - {value}")
+    for i, entry in od.items():
+        if isinstance(entry, canopen.objectdictionary.Variable):
+            assert entry.data_type is not None
+            data_type = inverted_od_data_types[entry.data_type]
+            value = format_default(entry.default)
+            print(f"0x{i:04X}: {entry.name} - {data_type} - {value}")
         else:
-            print(f"0x{i:04X}: {od[i].name}")
-            for j in od[i]:
-                data_type = inverted_od_data_types[od[i][j].data_type]
-                value = format_default(od[i][j].default)
-                print(f"  0x{i:04X} 0x{j:02X}: {od[i][j].name} - {data_type} - {value}")
+            print(f"0x{i:04X}: {entry.name}")
+            for j, subentry in entry.items():
+                data_type = inverted_od_data_types[subentry.data_type]
+                value = format_default(subentry.default)
+                print(f"  0x{i:04X} 0x{j:02X}: {subentry.name} - {data_type} - {value}")

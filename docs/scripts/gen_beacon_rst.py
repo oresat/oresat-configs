@@ -1,11 +1,7 @@
 """Generate beacon rst files."""
 
 import os
-import sys
 from pathlib import Path
-
-_FILE_PATH = os.path.dirname(os.path.abspath(__file__ + "/../.."))
-sys.path.insert(0, _FILE_PATH)
 
 import bitstring
 import canopen
@@ -72,7 +68,7 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
     lines.append(header_line)
     lines.append(
         "|                  | Dest Callsign                     | Dest SSID | Src Callsign        "
-        "              | Src SSID  | Control | PID |\n"
+        "              | Src SSID  | Control | PID |\n",
     )
     header_line = (
         "+==================+=====+=====+=====+=====+=====+=====+===========+=====+=====+=====+==="
@@ -85,7 +81,7 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
         f' "{dest_callsign[3]}" | "{dest_callsign[4]}" | "{dest_callsign[5]}" | {dest_ssid:02X}    '
         f'    | "{src_callsign[0]}" | "{src_callsign[1]}" | "{src_callsign[2]}" | '
         f'"{src_callsign[3]}" | "{src_callsign[4]}" | "{src_callsign[5]}" | {src_ssid:02X}       '
-        f" | {control:02X}      | {pid:02X}  |\n"
+        f" | {control:02X}      | {pid:02X}  |\n",
     )
     sd = (
         dest_callsign.encode()
@@ -100,7 +96,7 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
         f"| Hex              | {sd[0]:02X}  | {sd[1]:02X}  | {sd[2]:02X}  | {sd[3]:02X}  | "
         f"{sd[4]:02X}  | {sd[5]:02X}  | {sd[6]:02X}        | {sd[7]:02X}  | {sd[8]:02X}  |"
         f" {sd[9]:02X}  | {sd[10]:02X}  | {sd[11]:02X}  | {sd[12]:02X}  | {sd[13]:02X}        | "
-        f"{sd[14]:02X}      | {sd[15]:02X}  |\n"
+        f"{sd[14]:02X}      | {sd[15]:02X}  |\n",
     )
     sd = (
         (bitstring.BitArray(dest_callsign.encode()) << 1).bytes
@@ -115,12 +111,12 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
         f"| Hex (bitshifted) | {sd[0]:02X}  | {sd[1]:02X}  | {sd[2]:02X}  | {sd[3]:02X}  | "
         f"{sd[4]:02X}  | {sd[5]:02X}  | {sd[6]:02X}        | {sd[7]:02X}  | {sd[8]:02X}  |"
         f" {sd[9]:02X}  | {sd[10]:02X}  | {sd[11]:02X}  | {sd[12]:02X}  | {sd[13]:02X}        | "
-        f"{sd[14]:02X}      | {sd[15]:02X}  |\n"
+        f"{sd[14]:02X}      | {sd[15]:02X}  |\n",
     )
     lines.append(header_line)
     lines.append(
         "| Offset           | 0   | 1   | 2   | 3   | 4   | 5   | 6         | 7   | 8   | 9   | 10"
-        "  | 11  | 12  | 13        | 14      | 15  |\n"
+        "  | 11  | 12  | 13        | 14      | 15  |\n",
     )
     lines.append(header_line)
     lines.append("\n")
@@ -134,7 +130,7 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
     lines.append("\n")
     lines.append(".. csv-table::\n")
     lines.append(
-        '   :header: "Offset", "Card", "Name", "Unit", "Data Type", "Size", "Description"\n'
+        '   :header: "Offset", "Card", "Name", "Unit", "Data Type", "Size", "Description"\n',
     )
     lines.append("\n")
     offset = 0
@@ -183,7 +179,7 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
         desc = desc.replace("\n", "\n   ")
 
         lines.append(
-            f'   "{offset}", "{card}", "{name}", "{obj.unit}", "{data_type}", "{size}", "{desc}"\n'
+            f'   "{offset}", "{card}", "{name}", "{obj.unit}", "{data_type}", "{size}", "{desc}"\n',
         )
         offset += size
 

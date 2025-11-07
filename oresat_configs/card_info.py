@@ -1,10 +1,14 @@
 """Utilities for top level cards definitions, not in the OD"""
 
+from __future__ import annotations
+
 import csv
 from dataclasses import InitVar, dataclass, field, fields
 from importlib import abc, resources
-from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from . import base
 
@@ -28,12 +32,12 @@ class Card:
     """Optional child node name. Useful for CFC cards."""
     base: str = field(init=False)
     """Base type of card; e.g. "battery", "solar", ..."""
-    common: Optional[abc.Traversable] = field(init=False)
+    common: abc.Traversable | None = field(init=False)
     """Path to the card's common (sw or fw) config"""
-    config: Optional[abc.Traversable] = field(init=False)
+    config: abc.Traversable | None = field(init=False)
     """Path to the card specific config"""
 
-    def __post_init__(self, name):
+    def __post_init__(self, name: str) -> None:
         if name in ("cfc_processor", "cfc_sensor"):
             basename = "cfc"
         elif name.startswith("rw"):
@@ -54,10 +58,7 @@ class Card:
         else:
             raise ValueError(f"Invalid processor {self.processor}")
 
-        if self.processor == "none":
-            config = None
-        else:
-            config = basedir / (basename + ".yaml")
+        config = None if self.processor == "none" else basedir / (basename + ".yaml")
 
         object.__setattr__(self, "base", basename)
         object.__setattr__(self, "common", common)

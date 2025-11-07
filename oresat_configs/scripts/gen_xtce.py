@@ -1,23 +1,35 @@
 """Generate XTCE for the beacon."""
 
 import xml.etree.ElementTree as ET
-from argparse import ArgumentParser, Namespace
-from datetime import datetime
-from typing import Any, Optional
+from argparse import Namespace
+from datetime import datetime, timezone
+from typing import Any, cast
 
 import canopen
 
 from .. import Mission, OreSatConfig
 
-GEN_XTCE = "generate beacon xtce file"
 
+def build_arguments(subparsers: Any) -> None:
+    """Build command line arguments for this script.
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
+    This function will be invoked by scripts.main to configure command line arguments for this
+    subcommand. Use subparsers.add_parser() to get an ArgumentParser. The parser must have the
+    default argument func which is the entry point for this subcommand: parser.set_defaults(func=?)
 
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
+    Parameters
+    ----------
+    subparsers
+        The output of ArgumentParser.add_subparsers() from the primary ArgumentParser. This function
+        should call add_parser() on this parameter to get the ArgumentParser that is used to
+        configure arguments for this subcommand.
+        See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of
+        that section, for more.
     """
-    parser.description = GEN_XTCE
+    desc = "generate beacon xtce file"
+    parser = subparsers.add_parser("xtce", description=desc, help=desc)
+    parser.set_defaults(func=gen_xtce)
+
     parser.add_argument(
         "--oresat",
         default=Mission.default().arg,
@@ -26,23 +38,11 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument(
-        "-d", "--dir-path", default=".", help="Output directory path. (Default: %(default)s)"
+        "-d",
+        "--dir-path",
+        default=".",
+        help="Output directory path. (Default: %(default)s)",
     )
-    return parser
-
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("xtce", help=GEN_XTCE))
-    parser.set_defaults(func=gen_xtce)
 
 
 CANOPEN_TO_XTCE_DT = {
@@ -86,7 +86,10 @@ def make_obj_name(obj: canopen.objectdictionary.Variable) -> str:
     if isinstance(obj.parent, canopen.ObjectDictionary):
         name += obj.name
     else:
-        name += f"{obj.parent.name}_{obj.name}"
+        # FIXME: canopen is still working out their type annotations. Remove ignore once ODArray
+        #        parent gets the correct annotation
+        pname = obj.parent.name  # type: ignore[attr-defined]
+        name += f"{pname}_{obj.name}"
 
     return name
 
@@ -94,6 +97,7 @@ def make_obj_name(obj: canopen.objectdictionary.Variable) -> str:
 def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
     """Make xtce data type name."""
 
+    assert obj.data_type is not None
     type_name = CANOPEN_TO_XTCE_DT[obj.data_type]
     if obj.name in ["unix_time", "updater_status"]:
         type_name = obj.name
@@ -101,8 +105,12 @@ def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
         if isinstance(obj.parent, canopen.ObjectDictionary):
             type_name += f"_c3_{obj.name}"
         else:
-            type_name += f"_{obj.parent.name}_{obj.name}"
+            # FIXME: canopen is still working out their type annotations. Remove ignore once ODArray
+            #        parent gets the correct annotation
+            pname = obj.parent.name  # type: ignore[attr-defined]
+            type_name += f"_{pname}_{obj.name}"
     elif obj.data_type == canopen.objectdictionary.VISIBLE_STRING:
+        assert isinstance(obj.default, str)
         type_name += f"{len(obj.default) * 8}"
     elif obj.unit:
         type_name += f"_{obj.unit}"
@@ -128,15 +136,16 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
             ),
         },
     )
-
+    beacon = config.od_db["c3"]["beacon"]
+    assert isinstance(beacon, canopen.objectdictionary.Record)
     header = ET.SubElement(
         root,
         "Header",
         attrib={
             "validationStatus": "Working",
             "classification": "NotClassified",
-            "version": f'{config.od_db["c3"]["beacon"]["revision"].value}.0',
-            "date": datetime.now().strftime("%Y-%m-%d"),
+            "version": f'{beacon["revision"].value}.0',
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         },
     )
     author_set = ET.SubElement(header, "AuthorSet")
@@ -176,7 +185,9 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
     )
     ET.SubElement(uint128_type, "UnitSet")
     bin_data_enc = ET.SubElement(
-        uint128_type, "BinaryDataEncoding", attrib={"bitOrder": "leastSignificantBitFirst"}
+        uint128_type,
+        "BinaryDataEncoding",
+        attrib={"bitOrder": "leastSignificantBitFirst"},
     )
     bin_data_enc_size = ET.SubElement(
         bin_data_enc,
@@ -311,7 +322,9 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
             size_in_bits = ET.SubElement(str_para_type, "SizeInBits")
             fixed = ET.SubElement(size_in_bits, "Fixed")
             fixed_value = ET.SubElement(fixed, "FixedValue")
-            fixed_value.text = str(len(obj.default) * 8)
+            # FIXME: canopen is still working out their type annotations. Remove cast when default
+            #        gets the correct type
+            fixed_value.text = str(len(cast(str, obj.default)) * 8)
 
     para_set = ET.SubElement(tm_meta, "ParameterSet")
 
@@ -381,10 +394,7 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
     tree.write(f"{dir_path}/{file_name}", encoding="utf-8", xml_declaration=True)
 
 
-def gen_xtce(args: Optional[Namespace] = None) -> None:
+def gen_xtce(args: Namespace) -> None:
     """Gen_dcf main."""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
-
     config = OreSatConfig(args.oresat)
     write_xtce(config, args.dir_path)

@@ -1,11 +1,15 @@
 """Load a card config file."""
 
+# dacite doesn't work with | from __future__.annotations on 3.9, remove when upgrading to 3.10+
+# ruff: noqa: UP007, UP045
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import cache
-from pathlib import Path
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from dacite import from_dict
 from yaml import CLoader, load

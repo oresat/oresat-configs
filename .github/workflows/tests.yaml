@@ -25,23 +25,26 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt install libxml2-utils libyaml-0-2
+        sudo apt update
+        sudo apt install -y libxml2-utils libyaml-0-2
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install .[dev]
 
     - name: Install Kaitai Struct Compiler
       run: |
         curl -LO https://github.com/kaitai-io/kaitai_struct_compiler/releases/download/0.10/kaitai-struct-compiler_0.10_all.deb
-        sudo apt-get install ./kaitai-struct-compiler_0.10_all.deb
+        sudo apt install -y ./kaitai-struct-compiler_0.10_all.deb
 
-    - name: Lint with Pylama
-      run: pylama
+    - name: Format with Ruff
+      run: ruff format --check --diff
 
-    - name: Check format with Black
-      run: black --check --diff .
+    - name: Lint with Ruff
+      run: ruff check
 
-    - name: Check format with isort
-      run: isort --check --diff .
+    - name: Typecheck with mypy
+      run: |
+        mypy --install-types --non-interactive oresat_configs
+        mypy oresat_configs
 
     - name: Test with Python's unittest
       run: python -m unittest
@@ -53,17 +56,18 @@ jobs:
       run: python -m build
 
     - name: Test building sphinx docs
-      run: make -C docs html
+      # TZ=UTC fixes a crash when running sphinx inside nektos/act
+      run: TZ=UTC make -C docs html
 
     - name: Test installed scripts
       run: |
         pip install dist/*.whl
         oresat-configs > /dev/null
-        oresat-gen-fw-files c3
-        oresat-gen-dcf c3
-        oresat-print-od c3 > /dev/null
-        oresat-gen-kaitai
-        oresat-gen-xtce
+        oresat-configs fw-files c3
+        oresat-configs dcf c3
+        oresat-configs od c3 > /dev/null
+        oresat-configs kaitai
+        oresat-configs xtce
         xmllint --noout --schema tests/SpaceSystem.xsd oresat0_5.xtce
         oresat-configs cards > /dev/null
         oresat-configs pdo c3 --list > /dev/null
