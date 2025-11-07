@@ -1,6 +1,7 @@
 """Generate a DBC file for SavvyCAN."""
 
 from argparse import Namespace
+from pathlib import Path
 from typing import Any
 
 from canopen.objectdictionary import REAL32, REAL64, UNSIGNED_TYPES, Record, Variable
@@ -144,15 +145,13 @@ def build_arguments(subparsers: Any) -> None:
         type=lambda x: x.lower().removeprefix("oresat"),
         help="Oresat Mission. (Default: %(default)s)",
     )
-    parser.add_argument("-d", "--dir-path", default=".", help='directory path; default "."')
+    parser.add_argument(
+        "-d", "--dir-path", default=".", type=Path, help='Directory path. (Default "%(default)s")'
+    )
 
 
-def write_dbc(config: OreSatConfig, dir_path: str = ".") -> None:
-    """Write CAN message/signal definitions to a dbc file."""
-
-    mission = config.mission.name.lower()
-    file_name = mission + ".dbc"
-    file_path = f"{dir_path}/{file_name}" if dir_path else file_name
+def generate_dbc(config: OreSatConfig) -> list[str]:
+    """Generate CAN message/signal definitions for a dbc file."""
 
     lines: list[str] = [
         f'VERSION "{__version__}"',
@@ -401,11 +400,13 @@ def write_dbc(config: OreSatConfig, dir_path: str = ".") -> None:
     for cob_id, signal, value in floats:
         lines.append(f"SIG_VALTYPE_ {cob_id} {signal} : {value};")
 
-    with open(file_path, "w") as f:
-        f.writelines(line + "\n" for line in lines)
+    return lines
 
 
 def gen_dbc(args: Namespace) -> None:
     """Gen_dbc main."""
     config = OreSatConfig(args.oresat)
-    write_dbc(config, args.dir_path)
+    dbc = generate_dbc(config)
+
+    with (args.dir_path / config.mission.filename()).with_suffix(".dbc").open("w") as f:
+        f.writelines(line + "\n" for line in dbc)

@@ -580,7 +580,7 @@ objects:
     description: OreSat node status
     generate_subindexes:
       subindexes: node_ids
-      names: node_ids
+      name: node_ids
       data_type: uint8
       access_type: ro
       value_descriptions:

@@ -1,6 +1,5 @@
 """Generate beacon rst files."""
 
-import os
 from pathlib import Path
 
 import bitstring
@@ -27,7 +26,7 @@ OD_DATA_TYPES = {
 """Nice names for CANopen data types."""
 
 
-def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
+def gen_beacon_rst(config: OreSatConfig, url: str) -> list[str]:
     """Genetate a rst file for a beacon definition."""
 
     title = "Beacon Definition"
@@ -189,25 +188,21 @@ def gen_beacon_rst(config: OreSatConfig, file_path: str, url: str) -> None:
 
     lines.append("\n")
     lines.append(f"Total packet length: {offset} octets\n")
-
-    dir_path = os.path.dirname(file_path)
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
-
-    with open(file_path, "w") as f:
-        f.writelines(lines)
+    return lines
 
 
 def gen_beacon_rst_files() -> None:
     """Generate all beacon rst files."""
 
-    parent_dir = os.path.dirname(os.path.abspath(__file__ + "/.."))
+    docs_dir = Path(__file__).parent.parent
     for mission in Mission:
-        mission_name = mission.name.lower()
         url = (
-            f"https://github.com/oresat/oresat-configs/blob/master/oresat_configs/{mission_name}"
-            "/beacon.yaml"
+            "https://github.com/oresat/oresat-configs/blob/master/oresat_configs"
+            f"/{mission.filename()}/beacon.yaml"
         )
-        file_path = f"{parent_dir}/{mission_name}/gen"
-        Path(file_path).mkdir(parents=True, exist_ok=True)
-        gen_beacon_rst(OreSatConfig(mission), f"{file_path}/beacon.rst", url)
+        rst = gen_beacon_rst(OreSatConfig(mission), url)
+
+        gen_dir = docs_dir / mission.filename() / "gen"
+        gen_dir.mkdir(parents=True, exist_ok=True)
+        with (gen_dir / "beacon.rst").open("w") as f:
+            f.writelines(rst)

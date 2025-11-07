@@ -3,6 +3,7 @@
 import xml.etree.ElementTree as ET
 from argparse import Namespace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, cast
 
 import canopen
@@ -41,6 +42,7 @@ def build_arguments(subparsers: Any) -> None:
         "-d",
         "--dir-path",
         default=".",
+        type=Path,
         help="Output directory path. (Default: %(default)s)",
     )
 
@@ -121,7 +123,7 @@ def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
     return type_name
 
 
-def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
+def generate_xtce(config: OreSatConfig) -> ET.ElementTree:
     """Write beacon configs to a xtce file."""
 
     root = ET.Element(
@@ -390,11 +392,15 @@ def write_xtce(config: OreSatConfig, dir_path: str = ".") -> None:
 
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ", level=0)
-    file_name = f"{config.mission.filename()}.xtce"
-    tree.write(f"{dir_path}/{file_name}", encoding="utf-8", xml_declaration=True)
+    return tree
 
 
 def gen_xtce(args: Namespace) -> None:
     """Gen_dcf main."""
     config = OreSatConfig(args.oresat)
-    write_xtce(config, args.dir_path)
+    tree = generate_xtce(config)
+    tree.write(
+        (args.dir_path / config.mission.filename()).with_suffix(".xtce"),
+        encoding="utf-8",
+        xml_declaration=True,
+    )
