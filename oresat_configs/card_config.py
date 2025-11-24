@@ -389,6 +389,7 @@ class IndexObject(ConfigObject):
 
     def _to_array(self, node_ids: dict[str, int]) -> ODArray:
         arr = ODArray(self.name, self.index)
+        arr.description = self.description
         for subindex in self.subindexes:
             arr.add_member(subindex.to_entry(self.index))
         if self.generate_subindexes:
@@ -399,6 +400,7 @@ class IndexObject(ConfigObject):
 
     def _to_record(self) -> ODRecord:
         rec = ODRecord(self.name, self.index)
+        rec.description = self.description
         for subindex in self.subindexes:
             rec.add_member(subindex.to_entry(self.index))
         self._add_entry_0(rec)

@@ -53,6 +53,7 @@ class TestScripts:
     def test_print_od(self, config: OreSatConfig) -> None:
         args = Namespace()
         args.oresat = config.mission.arg
+        args.verbose = True
         for name in config.od_db:
             args.card = name
             print_od.print_od(args)
