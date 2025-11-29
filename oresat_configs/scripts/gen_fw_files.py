@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from itertools import chain, islice
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -62,9 +63,15 @@ def build_arguments(subparsers: Any) -> None:
     )
 
 
-INDENT4 = " " * 4
-INDENT8 = " " * 8
-INDENT12 = " " * 12
+def indent(*lines: str | Iterable) -> list[str]:
+    indented = []
+    for line in lines:
+        if isinstance(line, str):
+            indented.append("    " + line)
+        elif isinstance(line, Iterable):
+            indented += indent(*line)
+    return indented
+
 
 _SKIP_INDEXES = [0x1F81, 0x1F82, 0x1F89]
 """CANopenNode skips the data (it just set to NULL) for these indexes for some reason"""
@@ -177,29 +184,30 @@ def attr_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
         return []
 
     if isinstance(obj, ODVariable):
-        return [f"{INDENT4}.x{obj.index:X}_{obj.name} = {initializer(obj)},"]
+        return [f".x{obj.index:X}_{obj.name} = {initializer(obj)},"]
 
     if isinstance(obj, ODArray):
-        lines = [f"{INDENT4}.x{obj.index:X}_{obj.name}_sub0 = {obj[0].default},"]
+        lines = [f".x{obj.index:X}_{obj.name}_sub0 = {obj[0].default},"]
         if next(islice(obj.values(), 1, None)).data_type == DOMAIN:
             return lines  # skip domains
 
         lines.append(
-            f"{INDENT4}.x{obj.index:X}_{obj.name} = {{"
+            f".x{obj.index:X}_{obj.name} = {{"
             + ", ".join(initializer(sub) for sub in islice(obj.values(), 1, None))
             + "},",
         )
         return lines
 
     if isinstance(obj, ODRecord):
-        lines = [f"{INDENT4}.x{obj.index:X}_{obj.name} = {{"]
-
-        for sub in obj.values():
-            if sub.data_type == DOMAIN:
-                continue  # skip domains
-            lines.append(f"{INDENT8}.{sub.name} = {initializer(sub)},")
-        lines.append(INDENT4 + "},")
-        return lines
+        return [
+            f".x{obj.index:X}_{obj.name} = {{",
+            *indent(
+                f".{sub.name} = {initializer(sub)},"
+                for sub in obj.values()
+                if sub.data_type != DOMAIN
+            ),
+            "},",
+        ]
 
     raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
 
@@ -290,10 +298,12 @@ def obj_entry_body(index: int, obj: ODVariable | ODRecord | ODArray) -> list[str
             for i, sub in obj.items()
             for line in [
                 "{",
-                f"{INDENT4}.dataOrig = " + data_orig(index, sub, f"{obj.name}.{sub.name}"),
-                f"{INDENT4}.subIndex = {i},",
-                f"{INDENT4}.attribute = {_var_attr_flags(sub)},",
-                f"{INDENT4}.dataLength = {_var_data_type_len(sub)}",
+                *indent(
+                    ".dataOrig = " + data_orig(index, sub, f"{obj.name}.{sub.name}"),
+                    f".subIndex = {i},",
+                    f".attribute = {_var_attr_flags(sub)},",
+                    f".dataLength = {_var_data_type_len(sub)}",
+                ),
                 "},",
             ]
         ]
@@ -304,9 +314,9 @@ def obj_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
     """Generate lines for OD.c for a specific index"""
 
     return [
-        f"{INDENT4}.o_{obj.index:X}_{obj.name} = {{",
-        *(INDENT8 + line for line in obj_entry_body(obj.index, obj)),
-        f"{INDENT4}}},",
+        f".o_{obj.index:X}_{obj.name} = {{",
+        *indent(obj_entry_body(obj.index, obj)),
+        "},",
     ]
 
 
@@ -333,18 +343,18 @@ def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
 
     lines.append("OD_ATTR_RAM OD_RAM_t OD_RAM = {")
     for obj in od.values():
-        lines += attr_lines(obj)
+        lines.extend(indent(attr_lines(obj)))
     lines.append("};")
     lines.append("")
 
     lines.append("typedef struct {")
     for i, obj in od.items():
         if isinstance(obj, ODVariable):
-            lines.append(f"{INDENT4}OD_obj_var_t o_{i:X}_{obj.name};")
+            lines.extend(indent(f"OD_obj_var_t o_{i:X}_{obj.name};"))
         elif isinstance(obj, ODArray):
-            lines.append(f"{INDENT4}OD_obj_array_t o_{i:X}_{obj.name};")
+            lines.extend(indent(f"OD_obj_array_t o_{i:X}_{obj.name};"))
         elif isinstance(obj, ODRecord):
-            lines.append(f"{INDENT4}OD_obj_record_t o_{i:X}_{obj.name}[{len(obj)}];")
+            lines.extend(indent(f"OD_obj_record_t o_{i:X}_{obj.name}[{len(obj)}];"))
         else:
             raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
     lines.append("} ODObjs_t;")
@@ -352,7 +362,7 @@ def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
 
     lines.append("static CO_PROGMEM ODObjs_t ODObjs = {")
     for obj in od.values():
-        lines += obj_lines(obj)
+        lines.extend(indent(obj_lines(obj)))
     lines.append("};")
     lines.append("")
 
@@ -370,14 +380,14 @@ def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
         else:
             raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
         temp = f"0x{i:X}, 0x{length:02X}, {obj_type}, &ODObjs.o_{i:X}_{obj.name}, NULL"
-        lines.append(INDENT4 + "{" + temp + "},")
-    lines.append(INDENT4 + "{0x0000, 0x00, 0, NULL, NULL}")
+        lines.extend(indent(f"{{{temp}}},"))
+    lines.extend(indent("{0x0000, 0x00, 0, NULL, NULL}"))
     lines.append("};")
     lines.append("")
 
     lines.append("static OD_t _OD = {")
-    lines.append(f"{INDENT4}(sizeof(ODList) / sizeof(ODList[0])) - 1,")
-    lines.append(f"{INDENT4}&ODList[0]")
+    lines.extend(indent("(sizeof(ODList) / sizeof(ODList[0])) - 1,"))
+    lines.extend(indent("&ODList[0]"))
     lines.append("};")
     lines.append("")
 
@@ -393,12 +403,12 @@ def decl_type(obj: ODVariable, name: str) -> list[str]:
         return []  # skip domains
     if obj.data_type in (VISIBLE_STRING, UNICODE_STRING):
         return [
-            f"{INDENT4}{ctype[obj.data_type]} {name}[{len(cast(str, obj.default)) + 1}];",
+            f"{ctype[obj.data_type]} {name}[{len(cast(str, obj.default)) + 1}];",
         ]  # + 1 for '\0'
     if obj.data_type == OCTET_STRING:
-        return [f"{INDENT4}{ctype[obj.data_type]} {name}[{len(cast(bytes, obj.default))}];"]
+        return [f"{ctype[obj.data_type]} {name}[{len(cast(bytes, obj.default))}];"]
     assert obj.data_type is not None
-    return [f"{INDENT4}{ctype[obj.data_type]} {name};"]
+    return [f"{ctype[obj.data_type]} {name};"]
 
 
 def _canopennode_h_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
@@ -414,14 +424,14 @@ def _canopennode_h_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
     if isinstance(obj, ODArray):
         sub = next(islice(obj.values(), 1, None))
         return [
-            f"{INDENT4}uint8_t {name}_sub0;",
+            f"uint8_t {name}_sub0;",
             *decl_type(sub, f"{name}[OD_CNT_ARR_{obj.index:X}]"),
         ]
     if isinstance(obj, ODRecord):
-        lines = [f"{INDENT4}struct {{"]
+        lines = ["struct {"]
         for sub in obj.values():
-            lines.extend(INDENT4 + s for s in decl_type(sub, sub.name))
-        lines.append(f"{INDENT4}}} {name};")
+            lines.extend(indent(decl_type(sub, sub.name)))
+        lines.append(f"}} {name};")
         return lines
     raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
 
@@ -476,7 +486,7 @@ def generate_canopennode_h(od: canopen.ObjectDictionary) -> list[str]:
 
     lines.append("typedef struct {")
     for obj in od.values():
-        lines += _canopennode_h_lines(obj)
+        lines.extend(indent(_canopennode_h_lines(obj)))
     lines.append("} OD_RAM_t;")
     lines.append("")
 
@@ -555,8 +565,8 @@ def _make_enum_lines(obj: ODVariable) -> list[str]:
 
     return [
         f"enum {_obj_name(obj)}_enum {{",
-        *(
-            f"{INDENT4}{_obj_name(obj).upper()}_{name.upper()} = {value},"
+        *indent(
+            f"{_obj_name(obj).upper()}_{name.upper()} = {value},"
             for value, name in obj.value_descriptions.items()
         ),
         "};",
@@ -573,31 +583,29 @@ def _make_bitfields_lines(obj: ODVariable) -> list[str]:
     data_size = DATA_TYPE_C_SIZE[obj.data_type]
     bitfield_name = _obj_name(obj) + "_bitfield"
 
-    lines = [
-        f"typedef union {bitfield_name} " + "{",
-        f"{INDENT4}{data_type} value;",
-        INDENT4 + "struct __attribute((packed)) {",
-    ]
-
+    lines = []
     total_bits = 0
     for name, bits in sorted(obj.bit_definitions.items(), key=lambda k: max(k[1])):
         if total_bits < min(bits):
             unused_bits = min(bits) - total_bits
-            lines.append(f"{INDENT8}{data_type} unused{total_bits} : {unused_bits};")
+            lines.append(f"{data_type} unused{total_bits} : {unused_bits};")
             total_bits += unused_bits
-        lines.append(f"{INDENT8}{data_type} {name.lower()} : {len(bits)};")
+        lines.append(f"{data_type} {name.lower()} : {len(bits)};")
         total_bits += len(bits)
 
     if total_bits < data_size:
         unused_bits = data_size - total_bits
-        lines.append(f"{INDENT8}{data_type} unused{total_bits} : {unused_bits};")
-    lines += [
-        f"{INDENT4}}} fields;",
+        lines.append(f"{data_type} unused{total_bits} : {unused_bits};")
+
+    return [
+        f"typedef union {bitfield_name} {{",
+        *indent(
+            f"{data_type} value;", "struct __attribute((packed)) {", *indent(lines), "} fields;"
+        ),
         f"}} {bitfield_name}_t;",
         f"STATIC_ASSERT(sizeof({bitfield_name}_t) == sizeof({data_type}));",
         "",
     ]
-    return lines
 
 
 def gen_fw_files(args: Namespace) -> None:
