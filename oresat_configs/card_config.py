@@ -6,9 +6,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping  # noqa: TC003 dacite uses type information at runtime
 from dataclasses import dataclass, field
-from functools import cache
 from itertools import chain
 from typing import TYPE_CHECKING, Literal, NamedTuple, Optional, Union, cast
+
+from .odtypes import (
+    COBId,
+    HighestSubindexSupported,
+    PDOCommunicationParameter,
+    PDOMappingParameter,
+    PDOSync,
+    PDOTimer,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,6 +37,7 @@ from canopen.objectdictionary import (
     UNSIGNED32,
     UNSIGNED64,
     VISIBLE_STRING,
+    ObjectDictionary,
     ODArray,
     ODRecord,
     ODVariable,
@@ -297,18 +306,31 @@ class GenerateSubindex(ConfigObject):
     subindexes: Optional[Literal['fixed_length', 'node_ids']] = None
     """Subindexes of objects to generate."""
 
-    def to_entry(self, index: int, node_ids: dict[str, int]) -> list[ODVariable]:
+    def _to_subindex(self, name: str, subindex: int) -> SubindexObject:
+        return SubindexObject(
+            name=name,
+            data_type=self.data_type,
+            length=1,
+            access_type=self.access_type,
+            default=self.default,
+            description=self.description,
+            value_descriptions=self.value_descriptions,
+            bit_definitions=self.bit_definitions,
+            unit=self.unit,
+            scale_factor=self.scale_factor,
+            low_limit=self.low_limit,
+            high_limit=self.high_limit,
+            subindex=subindex,
+        )
+
+    def to_subindexes(self, node_ids: dict[str, int]) -> list[SubindexObject]:
         if self.subindexes == 'fixed_length':
             return [
-                self._to_variable(index, subindex, f"{self.name}_{subindex}")
-                for subindex in range(1, self.length + 1)
+                self._to_subindex(f'{self.name}_{sub}', sub) for sub in range(1, self.length + 1)
             ]
 
         if self.subindexes == 'node_ids':
-            # a node_id of 0 is flag for not on can bus
-            return [
-                self._to_variable(index, node, name) for name, node in node_ids.items() if node != 0
-            ]
+            return [self._to_subindex(name, node) for name, node in node_ids.items() if node != 0]
 
         raise ValueError(f"Invalid subindexes {self.subindexes}")
 
@@ -358,14 +380,27 @@ class IndexObject(ConfigObject):
 
     index: int = 0
     """Index of object, fw/sw common object are in 0x3000, card objects are in 0x4000."""
-    object_type: str = "variable"
+    object_type: Literal['variable', 'array', 'record'] = "variable"
     """Object type; must be ``"variable"``, ``"array"``, or ``"record"``."""
     subindexes: list[SubindexObject] = field(default_factory=list)
     """Defines subindexes for records and arrays."""
     generate_subindexes: Optional[GenerateSubindex] = None
     """Used to generate subindexes for arrays."""
 
-    def to_entry(self, node_ids: dict[str, int]) -> Union[ODArray, ODRecord, ODVariable]:
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.generate_subindexes is not None and self.subindexes:
+            raise ValueError("IndexObject {self.index} has both subindexes and generate_subindexes")
+        if self.object_type == 'variable' and (self.subindexes or self.generate_subindexes):
+            raise ValueError("IndexObject {self.index} of type variable must not have subindexes")
+
+    def expand_subindexes(self, node_ids: dict[str, int]) -> None:
+        if self.generate_subindexes is None:
+            return
+        self.subindexes = self.generate_subindexes.to_subindexes(node_ids)
+        self.generate_subindexes = None
+
+    def to_entry(self) -> Union[ODArray, ODRecord, ODVariable]:
         if self.object_type == 'variable':
             if self.subindexes:
                 raise ValueError("Variable object has subindexes")
@@ -378,7 +413,7 @@ class IndexObject(ConfigObject):
                 raise ValueError("Array object must have either subindexes or generate_subindexes")
             if not self.subindexes and not self.generate_subindexes:
                 raise ValueError("Array object must have either subindexes or generate_subindexes")
-            return self._to_array(node_ids)
+            return self._to_array()
 
         if self.object_type == 'record':
             if self.generate_subindexes:
@@ -387,15 +422,14 @@ class IndexObject(ConfigObject):
 
         raise ValueError(f"Invalid object type {self.object_type}")
 
-    def _to_array(self, node_ids: dict[str, int]) -> ODArray:
+    def _to_array(self) -> ODArray:
         arr = ODArray(self.name, self.index)
         arr.description = self.description
         for subindex in self.subindexes:
             arr.add_member(subindex.to_entry(self.index))
         if self.generate_subindexes:
-            for entry in self.generate_subindexes.to_entry(self.index, node_ids):
-                arr.add_member(entry)
-        self._add_entry_0(arr)
+            raise RuntimeError("generate() must be called first")
+        arr.add_member(HighestSubindexSupported(arr))
         return arr
 
     def _to_record(self) -> ODRecord:
@@ -403,16 +437,8 @@ class IndexObject(ConfigObject):
         rec.description = self.description
         for subindex in self.subindexes:
             rec.add_member(subindex.to_entry(self.index))
-        self._add_entry_0(rec)
+        rec.add_member(HighestSubindexSupported(rec))
         return rec
-
-    @staticmethod
-    def _add_entry_0(entry: ODArray | ODRecord) -> None:
-        var = ODVariable("highest_index_supported", entry.index, 0x0)
-        var.access_type = "const"
-        var.data_type = UNSIGNED8
-        var.default = max(entry) if len(entry) else 0
-        entry.add_member(var)
 
     @classmethod
     def from_dict(cls, data: dict) -> IndexObject:
@@ -440,7 +466,7 @@ class Tpdo:
     """TPDO number, 1-16."""
     rtr: bool = False
     """TPDO supports RTR."""
-    transmission_type: str = "timer"
+    transmission_type: Literal['timer', 'sync'] = "timer"
     """Transmission type of TPDO. Must be ``"timer"`` or ``"sync"``."""
     sync: int = 0
     """Send this TPDO every x SYNCs. 0 for acycle. Max 240."""
@@ -455,6 +481,29 @@ class Tpdo:
     """Delay after boot before the event timer starts in milliseconds."""
     fields: list[list[str]] = field(default_factory=list)
     """Index and subindexes of objects to map to the TPDO."""
+
+    def to_mapping_parameter(self, od: ObjectDictionary) -> ODRecord:
+        objects = []
+        for name in self.fields:
+            obj = od[name[0]]
+            if isinstance(obj, (ODRecord, ODArray)):
+                assert len(name) == 2
+                obj = obj[name[1]]
+            else:
+                assert len(name) == 1
+            objects.append(obj)
+
+        return PDOMappingParameter('tpdo', self.num, objects)
+
+    def to_communication_parameter(self, node_id: int) -> ODRecord:
+        transmission: PDOTimer | PDOSync
+        if self.transmission_type == 'timer':
+            transmission = PDOTimer(self.inhibit_time_ms, self.event_timer_ms)
+        else:
+            transmission = PDOSync(self.sync, self.sync_start_value)
+        return PDOCommunicationParameter(
+            'tpdo', self.num, COBId.pdo(node_id, self.num), transmission
+        )
 
 
 @dataclass
@@ -478,6 +527,22 @@ class Rpdo:
     """Card the TPDO is from."""
     tpdo_num: int
     """TPDO number, 1-16."""
+    fields: list[list[str]] = field(default_factory=list)
+    """Index and subindexes of objects to map the RPDO to."""
+
+    def to_mapping_parameter(self, od: ObjectDictionary) -> ODRecord:
+        objects = []
+        for name in self.fields:
+            entry = od[name[0]]
+            if isinstance(entry, (ODArray, ODRecord)):
+                entry = entry[name[1]]
+            objects.append(entry)
+
+        return PDOMappingParameter('rpdo', self.num, objects)
+
+    def to_communication_parameter(self, node_id: int) -> ODRecord:
+        cob_id = COBId.pdo(node_id, self.tpdo_num)
+        return PDOCommunicationParameter('rpdo', self.num, cob_id, PDOTimer(None, None))
 
 
 @dataclass
@@ -523,8 +588,18 @@ class CardConfig:
     fram: list[list[str]] = field(default_factory=list)
     """C3 only. List of index and subindex for the c3 to save the values of to F-RAM."""
 
+    def find_object(self, field: list[str]) -> IndexObject | SubindexObject:
+        for obj in self.objects:
+            if obj.name == field[0]:
+                if obj.object_type == 'variable':
+                    return obj
+                # else record or array
+                for sub in obj.subindexes:
+                    if sub.name == field[1]:
+                        return sub
+        raise ValueError(f'tpdo field {field} not found in config.objects')
+
     @classmethod
-    @cache
     def from_yaml(cls, config_path: Path) -> CardConfig:
         """Load a card YAML config file."""
 
