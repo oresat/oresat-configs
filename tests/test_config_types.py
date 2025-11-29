@@ -4,7 +4,7 @@ from importlib import abc, resources
 from typing import Any
 
 from dacite import Config, from_dict
-from yaml import Loader, load
+from yaml import CLoader, load
 
 from oresat_configs import Mission, _yaml_to_od, base
 from oresat_configs.beacon_config import BeaconConfig
@@ -24,7 +24,7 @@ class TestConfigTypes:
         """Helper that wraps loading yaml from a path"""
         with path.open() as f:
             config = f.read()
-        return load(config, Loader=Loader)
+        return load(config, Loader=CLoader)
 
     def test_beacon_config(self, mission: Mission) -> None:
         """Tests all the beacon configs, with dataclass BeaconConfig"""
