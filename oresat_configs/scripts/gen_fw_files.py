@@ -149,8 +149,6 @@ def generate_canopennode(name: str, od: canopen.ObjectDictionary) -> tuple[list[
             obj[1].default = cob_id
 
     # remove node id from pdo cob ids
-    # FIXME: canopen's current type annotaton for nr_of_* is clearly wrong, remove cast once
-    #        upstream fixes it
     _remove_pdo_cob_ids(0x1400, rpdo_cob_ids)
     _remove_pdo_cob_ids(0x1800, tpdo_cob_ids)
 
@@ -320,6 +318,27 @@ def obj_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
     ]
 
 
+def _odobj_t(obj: ODVariable | ODRecord | ODArray) -> str:
+    if isinstance(obj, ODVariable):
+        return f"OD_obj_var_t o_{obj.index:X}_{obj.name};"
+    if isinstance(obj, ODArray):
+        return f"OD_obj_array_t o_{obj.index:X}_{obj.name};"
+    if isinstance(obj, ODRecord):
+        return f"OD_obj_record_t o_{obj.index:X}_{obj.name}[{len(obj)}];"
+    raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
+
+
+def _odlist(obj: ODVariable | ODRecord | ODArray) -> str:
+    i = f'{obj.index:X}'
+    if isinstance(obj, ODVariable):
+        return f"{{0x{i}, 0x{1:02X}, ODT_VAR, &ODObjs.o_{i}_{obj.name}, NULL}},"
+    if isinstance(obj, ODArray):
+        return f"{{0x{i}, 0x{len(obj):02X}, ODT_ARR, &ODObjs.o_{i}_{obj.name}, NULL}},"
+    if isinstance(obj, ODRecord):
+        return f"{{0x{i}, 0x{len(obj):02X}, ODT_REC, &ODObjs.o_{i}_{obj.name}, NULL}},"
+    raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
+
+
 def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
     """Transform an od into a CANopenNode OD.c file
 
@@ -329,70 +348,39 @@ def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
         od data structure to save as file
     """
 
-    lines = []
-
-    lines.append("#define OD_DEFINITION")
-    lines.append('#include "301/CO_ODinterface.h"')
-    lines.append('#include "OD.h"')
-    lines.append("")
-
-    lines.append("#if CO_VERSION_MAJOR < 4")
-    lines.append("#error This file is only comatible with CANopenNode v4 and above")
-    lines.append("#endif")
-    lines.append("")
-
-    lines.append("OD_ATTR_RAM OD_RAM_t OD_RAM = {")
-    for obj in od.values():
-        lines.extend(indent(attr_lines(obj)))
-    lines.append("};")
-    lines.append("")
-
-    lines.append("typedef struct {")
-    for i, obj in od.items():
-        if isinstance(obj, ODVariable):
-            lines.extend(indent(f"OD_obj_var_t o_{i:X}_{obj.name};"))
-        elif isinstance(obj, ODArray):
-            lines.extend(indent(f"OD_obj_array_t o_{i:X}_{obj.name};"))
-        elif isinstance(obj, ODRecord):
-            lines.extend(indent(f"OD_obj_record_t o_{i:X}_{obj.name}[{len(obj)}];"))
-        else:
-            raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
-    lines.append("} ODObjs_t;")
-    lines.append("")
-
-    lines.append("static CO_PROGMEM ODObjs_t ODObjs = {")
-    for obj in od.values():
-        lines.extend(indent(obj_lines(obj)))
-    lines.append("};")
-    lines.append("")
-
-    lines.append("static OD_ATTR_OD OD_entry_t ODList[] = {")
-    for i, obj in od.items():
-        if isinstance(obj, ODVariable):
-            length = 1
-            obj_type = "ODT_VAR"
-        elif isinstance(obj, ODArray):
-            length = len(obj)
-            obj_type = "ODT_ARR"
-        elif isinstance(obj, ODRecord):
-            length = len(obj)
-            obj_type = "ODT_REC"
-        else:
-            raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
-        temp = f"0x{i:X}, 0x{length:02X}, {obj_type}, &ODObjs.o_{i:X}_{obj.name}, NULL"
-        lines.extend(indent(f"{{{temp}}},"))
-    lines.extend(indent("{0x0000, 0x00, 0, NULL, NULL}"))
-    lines.append("};")
-    lines.append("")
-
-    lines.append("static OD_t _OD = {")
-    lines.extend(indent("(sizeof(ODList) / sizeof(ODList[0])) - 1,"))
-    lines.extend(indent("&ODList[0]"))
-    lines.append("};")
-    lines.append("")
-
-    lines.append("OD_t *OD = &_OD;")
-    return lines
+    return [
+        "#define OD_DEFINITION",
+        '#include "301/CO_ODinterface.h"',
+        '#include "OD.h"',
+        "",
+        "#if CO_VERSION_MAJOR < 4",
+        "#error This file is only comatible with CANopenNode v4 and above",
+        "#endif",
+        "",
+        "OD_ATTR_RAM OD_RAM_t OD_RAM = {",
+        *indent(attr_lines(obj) for obj in od.values()),
+        "};",
+        "",
+        "typedef struct {",
+        *indent(_odobj_t(obj) for obj in od.values()),
+        "} ODObjs_t;",
+        "",
+        "static CO_PROGMEM ODObjs_t ODObjs = {",
+        *indent(obj_lines(obj) for obj in od.values()),
+        "};",
+        "",
+        "static OD_ATTR_OD OD_entry_t ODList[] = {",
+        *indent(_odlist(obj) for obj in od.values()),
+        *indent("{0x0000, 0x00, 0, NULL, NULL}"),
+        "};",
+        "",
+        "static OD_t _OD = {",
+        *indent("(sizeof(ODList) / sizeof(ODList[0])) - 1,"),
+        *indent("&ODList[0]"),
+        "};",
+        "",
+        "OD_t *OD = &_OD;",
+    ]
 
 
 def decl_type(obj: ODVariable, name: str) -> list[str]:
@@ -436,118 +424,20 @@ def _canopennode_h_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
     raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
 
 
-def generate_canopennode_h(od: canopen.ObjectDictionary) -> list[str]:
-    """Transform an od into a CANopenNode OD.h file
-
-    Parameters
-    ----------
-    od: canopen.ObjectDictionary
-        od data structure to save as file
-    """
-
-    lines = []
-
-    lines.append("#ifndef OD_H")
-    lines.append("#define OD_H")
-    lines.append("")
-    lines.append("#include <assert.h>")
-    lines.append("")
-    lines.append("#ifdef __cplusplus")
-    lines.append("#ifndef _Static_assert")
-    lines.append("#define _Static_assert static_assert")
-    lines.append("#endif")
-    lines.append("#endif")
-    lines.append("")
-    lines.append(
-        "#define STATIC_ASSERT(expression) "
-        '_Static_assert((expression), "(" #expression ") failed")',
-    )
-    lines.append("")
-
-    lines.append("#define OD_CNT_NMT 1")
-    lines.append("#define OD_CNT_HB_PROD 1")
-    lines.append(f"#define OD_CNT_HB_CONS {int(0x1016 in od)}")
-    lines.append("#define OD_CNT_EM 1")
-    lines.append("#define OD_CNT_EM_PROD 1")
-    lines.append(f"#define OD_CNT_SDO_SRV {int(0x1200 in od)}")
-    lines.append(f"#define OD_CNT_SDO_CLI {int(0x1280 in od)}")
-    lines.append(f"#define OD_CNT_TIME {int(0x1012 in od)}")
-    lines.append(f"#define OD_CNT_SYNC {int(0x1005 in od and 0x1006 in od)}")
-    lines.append(f"#define OD_CNT_RPDO {od.device_information.nr_of_RXPDO}")
-    lines.append(f"#define OD_CNT_TPDO {od.device_information.nr_of_TXPDO}")
-    lines.append("")
-
-    lines.extend(
-        f"#define OD_CNT_ARR_{i:X} {len(entry) - 1}"
-        for i, entry in od.items()
-        if isinstance(entry, ODArray)
-    )
-    lines.append("")
-
-    lines.append("typedef struct {")
-    for obj in od.values():
-        lines.extend(indent(_canopennode_h_lines(obj)))
-    lines.append("} OD_RAM_t;")
-    lines.append("")
-
-    lines.append("#ifndef OD_ATTR_RAM")
-    lines.append("#define OD_ATTR_RAM")
-    lines.append("#endif")
-    lines.append("extern OD_ATTR_RAM OD_RAM_t OD_RAM;")
-    lines.append("")
-
-    lines.append("#ifndef OD_ATTR_OD")
-    lines.append("#define OD_ATTR_OD")
-    lines.append("#endif")
-    lines.append("extern OD_ATTR_OD OD_t *OD;")
-    lines.append("")
-
-    for num, i in enumerate(od):
-        lines.append(f"#define OD_ENTRY_H{i:X} &OD->list[{num}]")
-    lines.append("")
-
-    for num, (i, obj) in enumerate(od.items()):
-        lines.append(f"#define OD_ENTRY_H{i:X}_{obj.name.upper()} &OD->list[{num}]")
-    lines.append("")
-
+def _make_defines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
     # add nice #defines for indexes and subindex values
-    for i, obj in od.items():
-        if i < 0x2000:
-            continue  # only care about common, card, and RPDO mapped objects
+    if obj.index < 0x2000:
+        return []  # only care about common, card, and RPDO mapped objects
 
-        lines.append(f"#define OD_INDEX_{obj.name.upper()} 0x{i:X}")
+    lines = [f"#define OD_INDEX_{obj.name.upper()} 0x{obj.index:X}"]
 
-        if not isinstance(obj, ODVariable):
-            for j, sub in obj.items():
-                if j == 0:
-                    continue
-                sub_name = f"{obj.name}_{sub.name}"
-                lines.append(f"#define OD_SUBINDEX_{sub_name.upper()} 0x{j:X}")
-        lines.append("")
-
-    for obj in od.values():
-        if isinstance(obj, ODVariable):
-            lines += _make_enum_lines(obj)
-        elif isinstance(obj, ODArray):
-            lines += _make_enum_lines(next(islice(obj.values(), 1, None)))
-        elif isinstance(obj, ODRecord):
-            for sub_obj in obj.values():
-                lines += _make_enum_lines(sub_obj)
-        else:
-            raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
-
-    for obj in od.values():
-        if isinstance(obj, ODVariable):
-            lines += _make_bitfields_lines(obj)
-        elif isinstance(obj, ODArray):
-            lines += _make_bitfields_lines(next(islice(obj.values(), 1, None)))
-        elif isinstance(obj, ODRecord):
-            for sub in obj.values():
-                lines += _make_bitfields_lines(sub)
-        else:
-            raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
-
-    lines.append("#endif /* OD_H */")
+    if not isinstance(obj, ODVariable):
+        for j, sub in obj.items():
+            if j == 0:
+                continue
+            sub_name = f"{obj.name}_{sub.name}"
+            lines.append(f"#define OD_SUBINDEX_{sub_name.upper()} 0x{j:X}")
+    lines.append("")
     return lines
 
 
@@ -572,6 +462,16 @@ def _make_enum_lines(obj: ODVariable) -> list[str]:
         "};",
         "",
     ]
+
+
+def _make_enums(obj: ODVariable | ODRecord | ODArray) -> list[str]:
+    if isinstance(obj, ODVariable):
+        return _make_enum_lines(obj)
+    if isinstance(obj, ODArray):
+        return _make_enum_lines(next(islice(obj.values(), 1, None)))
+    if isinstance(obj, ODRecord):
+        return [line for sub in obj.values() for line in _make_enum_lines(sub)]
+    raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
 
 
 def _make_bitfields_lines(obj: ODVariable) -> list[str]:
@@ -605,6 +505,88 @@ def _make_bitfields_lines(obj: ODVariable) -> list[str]:
         f"}} {bitfield_name}_t;",
         f"STATIC_ASSERT(sizeof({bitfield_name}_t) == sizeof({data_type}));",
         "",
+    ]
+
+
+def _make_bitfields(obj: ODVariable | ODRecord | ODArray) -> list[str]:
+    if isinstance(obj, ODVariable):
+        return _make_bitfields_lines(obj)
+    if isinstance(obj, ODArray):
+        return _make_bitfields_lines(next(islice(obj.values(), 1, None)))
+    if isinstance(obj, ODRecord):
+        return [line for sub in obj.values() for line in _make_bitfields_lines(sub)]
+    raise TypeError(f"Invalid object {obj.name} type: {type(obj)}")
+
+
+def generate_canopennode_h(od: canopen.ObjectDictionary) -> list[str]:
+    """Transform an od into a CANopenNode OD.h file
+
+    Parameters
+    ----------
+    od: canopen.ObjectDictionary
+        od data structure to save as file
+    """
+
+    return [
+        "#ifndef OD_H",
+        "#define OD_H",
+        "",
+        "#include <assert.h>",
+        "",
+        "#ifdef __cplusplus",
+        "#ifndef _Static_assert",
+        "#define _Static_assert static_assert",
+        "#endif",
+        "#endif",
+        "",
+        (
+            '#define STATIC_ASSERT(expression) '
+            '_Static_assert((expression), "(" #expression ") failed")'
+        ),
+        "",
+        "#define OD_CNT_NMT 1",
+        "#define OD_CNT_HB_PROD 1",
+        f"#define OD_CNT_HB_CONS {int(0x1016 in od)}",
+        "#define OD_CNT_EM 1",
+        "#define OD_CNT_EM_PROD 1",
+        f"#define OD_CNT_SDO_SRV {int(0x1200 in od)}",
+        f"#define OD_CNT_SDO_CLI {int(0x1280 in od)}",
+        f"#define OD_CNT_TIME {int(0x1012 in od)}",
+        f"#define OD_CNT_SYNC {int(0x1005 in od and 0x1006 in od)}",
+        f"#define OD_CNT_RPDO {od.device_information.nr_of_RXPDO}",
+        f"#define OD_CNT_TPDO {od.device_information.nr_of_TXPDO}",
+        "",
+        *(
+            f"#define OD_CNT_ARR_{i:X} {len(obj) - 1}"
+            for i, obj in od.items()
+            if isinstance(obj, ODArray)
+        ),
+        "",
+        "typedef struct {",
+        *indent(_canopennode_h_lines(obj) for obj in od.values()),
+        "} OD_RAM_t;",
+        "",
+        "#ifndef OD_ATTR_RAM",
+        "#define OD_ATTR_RAM",
+        "#endif",
+        "extern OD_ATTR_RAM OD_RAM_t OD_RAM;",
+        "",
+        "#ifndef OD_ATTR_OD",
+        "#define OD_ATTR_OD",
+        "#endif",
+        "extern OD_ATTR_OD OD_t *OD;",
+        "",
+        *(f"#define OD_ENTRY_H{i:X} &OD->list[{num}]" for num, i in enumerate(od)),
+        "",
+        *(
+            f"#define OD_ENTRY_H{i:X}_{obj.name.upper()} &OD->list[{num}]"
+            for num, (i, obj) in enumerate(od.items())
+        ),
+        "",
+        *(line for obj in od.values() for line in _make_defines(obj)),
+        *(line for obj in od.values() for line in _make_enums(obj)),
+        *(line for obj in od.values() for line in _make_bitfields(obj)),
+        "#endif /* OD_H */",
     ]
 
 
