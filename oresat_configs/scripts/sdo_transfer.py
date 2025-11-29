@@ -7,15 +7,28 @@ node's Object Dictionaries.
 
 from __future__ import annotations
 
-import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from argparse import Namespace
 
 import canopen
+from canopen.objectdictionary import (
+    BOOLEAN,
+    DOMAIN,
+    FLOAT_TYPES,
+    INTEGER_TYPES,
+    OCTET_STRING,
+    UNICODE_STRING,
+    VISIBLE_STRING,
+)
+from canopen.sdo import SdoArray, SdoRecord
 
 from .. import Mission, OreSatConfig
+
+STRING_TYPES = (VISIBLE_STRING, UNICODE_STRING)
+BINARY_TYPES = (OCTET_STRING, DOMAIN)
 
 
 def build_arguments(subparsers: Any) -> None:
@@ -48,8 +61,7 @@ def build_arguments(subparsers: Any) -> None:
         metavar="VALUE",
         nargs="?",
         default="",
-        help="Data to write or for only octet/domain data types a path to a file."
-        " (e.g. file:data.bin)",
+        help="Data to write or for only octet/domain data types a path to a file (e.g. data.bin).",
     )
     parser.add_argument(
         "--oresat",
@@ -63,65 +75,65 @@ def build_arguments(subparsers: Any) -> None:
 def sdo_transfer(args: Namespace) -> None:
     """Read or write data to a node using a SDO."""
     config = OreSatConfig(args.oresat)
-
-    if args.value.startswith("file:") and not os.path.isfile(args.value[5:]):
-        print(f"file does not exist {args.value[5:]}")
-        return
-
-    node_name = args.node.lower()
-    od = config.od_db[node_name]
-
-    # connect to CAN network
-    network = canopen.Network()
+    od = config.od_db[args.node.lower()]
     node = canopen.RemoteNode(0, od)
-    network.add_node(node)
-    network.connect(bustype="socketcan", channel=args.bus)
+
+    if args.mode in ["r", "read"]:
+        mode = 'read'
+    elif args.mode in ["w", "write"]:
+        mode = 'write'
+    else:
+        print('Invalid mode: must be "r", "read", "w", or "write"')
+        return
 
     # validate object exist and make sdo obj
     try:
-        if args.subindex == "none":
-            sdo = node.sdo[args.index]
-        else:
-            sdo = node.sdo[args.index][args.subindex]
+        sdo = node.sdo[args.index]
+        if isinstance(sdo, (SdoRecord, SdoArray)):
+            sdo = sdo[args.subindex]
     except KeyError as e:
         print(e)
         return
 
-    binary_type = [canopen.objectdictionary.OCTET_STRING, canopen.objectdictionary.DOMAIN]
+    if sdo.od.data_type in BINARY_TYPES:
+        file = Path(args.value)
 
-    # send SDO
-    try:
+    if mode == 'write':
         # FIXME: Type definiton to satisfy mypy, matches canopen.Variable.raw and .phys type
         # While canopen does declare types, it's not fully set up to have outside
         # projects use them?
         value: int | bool | float | str | bytes
-        if args.mode in ["r", "read"]:
-            if sdo.od.data_type in binary_type:
-                with open(args.value[5:], "wb") as f:
-                    f.write(sdo.raw)
-                    value = f"binary data written to {args.value[5:]}"
-            else:
-                value = sdo.phys
-            print(value)
-        elif args.mode in ["w", "write"]:
-            # convert string input to correct data type
-            if sdo.od.data_type in canopen.objectdictionary.INTEGER_TYPES:
-                value = int(args.value, 16) if args.value.startswith("0x") else int(args.value)
-            elif sdo.od.data_type in canopen.objectdictionary.FLOAT_TYPES:
-                value = float(args.value)
-            elif sdo.od.data_type == canopen.objectdictionary.VISIBLE_STRING:
-                value = args.value
-            elif sdo.od.data_type in binary_type:  # read in binary data from file
-                with open(args.value[5:], "rb") as f:
-                    value = f.read()
 
-            if sdo.od.data_type in binary_type:
-                sdo.raw = value
-            else:
-                sdo.phys = value
-        else:
-            print('invalid mode\nmust be "r", "read", "w", or "write"')
-    except (canopen.SdoAbortedError, FileNotFoundError) as e:
-        print(e)
+        # convert string input to correct data type
+        if sdo.od.data_type == BOOLEAN:
+            value = bool(args.value)
+        elif sdo.od.data_type in INTEGER_TYPES:
+            value = int(args.value, 0)
+        elif sdo.od.data_type in FLOAT_TYPES:
+            value = float(args.value)
+        elif sdo.od.data_type == STRING_TYPES:
+            value = args.value
+        elif sdo.od.data_type in BINARY_TYPES:  # read in binary data from file
+            with file.open("rb") as f:
+                value = f.read()
 
-    network.disconnect()
+    # connect to CAN network
+    network = canopen.Network()
+    network.add_node(node)
+    with network.connect(bustype="socketcan", channel=args.bus):
+        # send SDO
+        try:
+            if mode == "read":
+                if sdo.od.data_type in BINARY_TYPES:
+                    with file.open("wb") as f:
+                        f.write(sdo.raw)
+                        print(f"binary data written to {file}")
+                else:
+                    print(sdo.phys)
+            elif mode == "write":
+                if sdo.od.data_type in BINARY_TYPES:
+                    sdo.raw = value
+                else:
+                    sdo.phys = value
+        except (canopen.SdoAbortedError, FileNotFoundError) as e:
+            print(e)

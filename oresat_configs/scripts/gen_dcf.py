@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import canopen
@@ -43,18 +44,18 @@ def build_arguments(subparsers: Any) -> None:
         help="Oresat Mission. (Default: %(default)s)",
     )
     parser.add_argument("card", help="card name; all, c3, gps, star_tracker_1, etc")
-    parser.add_argument("-d", "--dir-path", default=".", help='directory path; defautl "."')
+    parser.add_argument(
+        "-d", "--dir-path", default=".", type=Path, help='Directory path. (Default "%(default)s")'
+    )
 
 
-def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
+def generate_dcf(od: canopen.ObjectDictionary) -> tuple[str, list[str]]:
     """Save an od/dcf file
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
-    dir_path: str
-        Directory path of dcf to save.
     """
 
     lines = []
@@ -62,7 +63,6 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     assert dev_info.product_name is not None
     file_name = dev_info.product_name + ".dcf"
     file_name = file_name.lower().replace(" ", "_")
-    file_path = f"{dir_path}/{file_name}"
     now = datetime.now(timezone.utc)
 
     # file info seciton
@@ -156,9 +156,7 @@ def write_od(od: canopen.ObjectDictionary, dir_path: str = ".") -> None:
     lines.append("")
 
     lines += _objects_lines(od, manufacturer_objs)
-
-    with open(file_path, "w") as f:
-        f.writelines(line + "\n" for line in lines)
+    return (file_name, lines)
 
 
 def _objects_lines(od: canopen.ObjectDictionary, indexes: list[int]) -> list[str]:
@@ -240,8 +238,11 @@ def gen_dcf(args: Namespace) -> None:
     config = OreSatConfig(args.oresat)
 
     if args.card.lower() == "all":
-        for od in config.od_db.values():
-            write_od(od, args.dir_path)
+        ods = list(config.od_db.values())
     else:
-        od = config.od_db[args.card.lower()]
-        write_od(od, args.dir_path)
+        ods = [config.od_db[args.card.lower()]]
+
+    for od in ods:
+        name, lines = generate_dcf(od)
+        with (args.dir_path / name).open("w") as f:
+            f.writelines(line + "\n" for line in lines)

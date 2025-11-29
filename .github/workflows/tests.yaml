@@ -43,11 +43,11 @@ jobs:
 
     - name: Typecheck with mypy
       run: |
-        mypy --install-types --non-interactive oresat_configs
-        mypy oresat_configs
+        mypy --install-types --non-interactive oresat_configs tests
+        mypy oresat_configs tests
 
-    - name: Test with Python's unittest
-      run: python -m unittest
+    - name: Test with pytest
+      run: pytest
 
     - name: Lint Yaml with yamllint
       run: yamllint oresat_configs
