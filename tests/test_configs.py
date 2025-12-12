@@ -3,6 +3,7 @@
 import re
 
 import canopen
+import pytest
 from canopen.objectdictionary import Array, Record
 
 from oresat_configs import OreSatConfig
@@ -174,3 +175,14 @@ class TestConfig:
 
                     # validate all array items are the same type
                     assert len(set(array_data_types)) in [0, 1]
+
+    def test_aliases(self, config: OreSatConfig) -> None:
+        # FIXME: generate aliases from config when they get added
+        assert config.name_from_alias('c3') == 'c3'
+        assert config.name_from_alias('solar') == 'solar_1'
+        assert config.name_from_alias('solar_2') == 'solar_2'
+        assert config.name_from_alias('solar', 2) == 'solar_2'
+        assert config.name_from_alias('bat') == 'battery_1'
+        assert config.name_from_alias('solar_2', 1) == 'solar_2'
+        with pytest.raises(KeyError):
+            config.name_from_alias('sol_2')

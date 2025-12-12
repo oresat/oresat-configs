@@ -93,7 +93,7 @@ def print_od(args: Namespace) -> None:
 
     inverted_od_data_types = {dt.od_type: name for name, dt in DATA_TYPE_DEFAULTS.items()}
 
-    arg_card = args.card.lower().replace("-", "_")
+    arg_card = config.name_from_alias(args.card)
 
     od = config.od_db[arg_card]
 

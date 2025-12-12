@@ -598,24 +598,14 @@ def gen_fw_files(args: Namespace) -> None:
         print(f"'{args.dir_path}' already exists and is not a directory")
         return
 
-    arg_card = args.card.lower().replace("-", "_")
-    if arg_card == "c3":
-        od = config.od_db["c3"]
-    elif arg_card in ["solar", "solar_module"]:
-        od = config.od_db["solar_1"]
-    elif arg_card in ["battery", "bat"]:
-        od = config.od_db["battery_1"]
-    elif arg_card in ["imu", "adcs"]:
-        od = config.od_db["adcs"]
-    elif arg_card in ["rw", "reaction_wheel"]:
-        od = config.od_db["rw_1"]
-    elif arg_card in ["diode", "diode_test"]:
-        od = config.od_db["diode_test"]
-    elif arg_card == "base":
+    if args.card.lower() == 'base':
         od = config.fw_base_od
     else:
-        print(f"invalid oresat card: {args.card}")
-        return
+        try:
+            od = config.od_db[config.name_from_alias(args.card)]
+        except KeyError:
+            print(f"invalid oresat card: {args.card}")
+            return
 
     versions = od["versions"]
     assert isinstance(versions, ODRecord)
