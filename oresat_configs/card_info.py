@@ -71,9 +71,8 @@ def cards_from_csv(path: Path) -> dict[str, Card]:
     with path.open() as f:
         reader = csv.DictReader(f)
         cols = set(reader.fieldnames) if reader.fieldnames else set()
-        expect = {f.name for f in fields(Card)}
+        expect = {f.name for f in fields(Card) if f.init}
         expect.add("name")  # the 'name' column is the keys of the returned dict; not in Card
-        expect -= {"base", "common", "config"}  # these fields are derived; not in csv
         if cols - expect:
             raise TypeError(f"{path} has excess columns: {cols - expect}. Update class Card?")
         if expect - cols:

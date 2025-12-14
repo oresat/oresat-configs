@@ -6,18 +6,10 @@ import canopen
 from canopen.objectdictionary import Array, Record
 
 from oresat_configs import OreSatConfig
-from oresat_configs._yaml_to_od import OD_DATA_TYPES, TPDO_COMM_START, TPDO_PARA_START
+from oresat_configs.card_config import DATA_TYPE_DEFAULTS
+from oresat_configs.odtypes import PDOCommunicationParameter, PDOMappingParameter
 
-INT_MIN_MAX = {
-    canopen.objectdictionary.INTEGER8: (-(2**7), 2**7 - 1),
-    canopen.objectdictionary.INTEGER16: (-(2**15), 2**15 - 1),
-    canopen.objectdictionary.INTEGER32: (-(2**31), 2**31 - 1),
-    canopen.objectdictionary.INTEGER64: (-(2**63), 2**63 - 1),
-    canopen.objectdictionary.UNSIGNED8: (0, 2**8 - 1),
-    canopen.objectdictionary.UNSIGNED16: (0, 2**16 - 1),
-    canopen.objectdictionary.UNSIGNED32: (0, 2**32 - 1),
-    canopen.objectdictionary.UNSIGNED64: (0, 2**64 - 1),
-}
+OD_TYPE_DEFAULTS = {default.od_type: default for default in DATA_TYPE_DEFAULTS.values()}
 
 
 class TestConfig:
@@ -29,8 +21,8 @@ class TestConfig:
         for name, od in config.od_db.items():
             tpdos = 0
             for i in range(16):
-                tpdo_comm_index = TPDO_COMM_START + i
-                tpdo_para_index = TPDO_PARA_START + i
+                tpdo_comm_index = PDOCommunicationParameter.INDEX_BASE['tpdo'] + i
+                tpdo_para_index = PDOMappingParameter.INDEX_BASE['tpdo'] + i
                 has_tpdo_para = tpdo_comm_index in od
                 has_tpdo_comm = tpdo_para_index in od
                 assert has_tpdo_comm == has_tpdo_para
@@ -53,7 +45,7 @@ class TestConfig:
                         f"{config.mission} {name} {mapped_obj.name} is not pdo mappable"
                     )
                     assert mapped_obj.data_type is not None
-                    size += OD_DATA_TYPES[mapped_obj.data_type].size
+                    size += OD_TYPE_DEFAULTS[mapped_obj.data_type].size
                 assert size <= 64, f"{config.mission} {name} TPDO{i + 1} is more than 64 bits"
                 tpdos += 1
 
@@ -83,7 +75,7 @@ class TestConfig:
                 assert obj.data_type not in dynamic_len_data_types, (
                     f"{config.mission} {obj.name} is a dynamic length data type"
                 )
-                length += OD_DATA_TYPES[obj.data_type].size // 8  # bits to bytes
+                length += OD_TYPE_DEFAULTS[obj.data_type].size // 8  # bits to bytes
 
         # AX.25 payload max length = 255
         # CRC32 length = 4
@@ -107,7 +99,7 @@ class TestConfig:
         """Test that a variable is valid."""
 
         assert isinstance(obj, canopen.objectdictionary.Variable)
-        assert obj.data_type in OD_DATA_TYPES
+        assert obj.data_type in OD_TYPE_DEFAULTS
         assert obj.access_type in ["ro", "wo", "rw", "rwr", "rww", "const"]
         assert isinstance(obj.data_type, int)
         self._test_snake_case(obj.name)
@@ -127,7 +119,8 @@ class TestConfig:
             assert isinstance(obj.default, int), (
                 f"{node_name} object 0x{obj.index:X} 0x{obj.subindex:02X} was not a int"
             )
-            int_min, int_max = INT_MIN_MAX[obj.data_type]
+            int_min = OD_TYPE_DEFAULTS[obj.data_type].low_limit
+            int_max = OD_TYPE_DEFAULTS[obj.data_type].high_limit
             assert int_min <= obj.default <= int_max, (
                 f"{node_name} object 0x{obj.index:X} 0x{obj.subindex:02X} default of {obj.default}"
                 f"not between {int_min} and {int_max}"
