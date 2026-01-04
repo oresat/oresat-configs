@@ -25,11 +25,11 @@ class TestScripts:
             assert lines
 
     def test_fw_files(self, config: OreSatConfig) -> None:
-        for name, od in config.od_db.items():
-            odc, odh = gen_fw_files.generate_canopennode(name, od)
+        for od in config.od_db.values():
+            odc, odh = gen_fw_files.generate_canopennode(od)
             assert odc
             assert odh
-        odc, odh = gen_fw_files.generate_canopennode("base", config.fw_base_od)
+        odc, odh = gen_fw_files.generate_canopennode(config.fw_base_od)
         assert odc
         assert odh
 

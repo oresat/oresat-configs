@@ -77,7 +77,7 @@ _SKIP_INDEXES = [0x1F81, 0x1F82, 0x1F89]
 """CANopenNode skips the data (it just set to NULL) for these indexes for some reason"""
 
 DATA_TYPE_C_TYPES = {
-    canopen.objectdictionary.datatypes.BOOLEAN: "bool_t",
+    canopen.objectdictionary.datatypes.BOOLEAN: "bool",
     canopen.objectdictionary.datatypes.INTEGER8: "int8_t",
     canopen.objectdictionary.datatypes.INTEGER16: "int16_t",
     canopen.objectdictionary.datatypes.INTEGER32: "int32_t",
@@ -109,13 +109,11 @@ DATA_TYPE_C_SIZE = {
 }
 
 
-def generate_canopennode(name: str, od: canopen.ObjectDictionary) -> tuple[list[str], list[str]]:
+def generate_canopennode(od: canopen.ObjectDictionary) -> tuple[list[str], list[str]]:
     """Create the text of CANopenNode OD.[c/h] files from the od
 
     Parameters
     ----------
-    name:
-        Name of the object dictionary
     od:
         OD data structure to save as file
     """
@@ -126,8 +124,8 @@ def generate_canopennode(name: str, od: canopen.ObjectDictionary) -> tuple[list[
         assert isinstance(emcy, ODVariable)
         emcy.default = 0x80
 
-    max_pdos = 12 if name == "c3" else 16
     assert od.node_id is not None
+    max_pdos = 12 if od.node_id == 0x01 else 16  # C3 has 16 pdos
     tpdo_cob_ids = [0x180 + (0x100 * (i % 4)) + (i // 4) + od.node_id for i in range(max_pdos)]
     rpdo_cob_ids = [i + 0x80 for i in tpdo_cob_ids]
 
@@ -135,18 +133,17 @@ def generate_canopennode(name: str, od: canopen.ObjectDictionary) -> tuple[list[
         assert od.node_id is not None
         for index in range(start, start + 0x1FF):
             try:
-                obj = od[index]
+                pdo = od[index]
             except KeyError:
                 continue
-            assert isinstance(obj, ODRecord)
-            default = obj[1].default
+            assert isinstance(pdo, ODRecord)
+            default = pdo['cob_id'].default
             assert default is not None
             if default & 0x7FF in cob_ids:
-                cob_id = (default - od.node_id) & 0xFFC
-                cob_id += default & 0xC0_00_00_00  # add back pdo flags (2 MSBs)
+                cob_id = ((default - od.node_id) & 0xFFC) | default & 0xC000_000
             else:
                 cob_id = default
-            obj[1].default = cob_id
+            pdo['cob_id'].default = cob_id
 
     # remove node id from pdo cob ids
     _remove_pdo_cob_ids(0x1400, rpdo_cob_ids)
@@ -350,7 +347,6 @@ def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
 
     return [
         "#define OD_DEFINITION",
-        '#include "301/CO_ODinterface.h"',
         '#include "OD.h"',
         "",
         "#if CO_VERSION_MAJOR < 4",
@@ -532,6 +528,9 @@ def generate_canopennode_h(od: canopen.ObjectDictionary) -> list[str]:
         "#define OD_H",
         "",
         "#include <assert.h>",
+        "#include <stdbool.h>",
+        "#include <stdint.h>",
+        "#include <301/CO_ODinterface.h>",
         "",
         "#ifdef __cplusplus",
         "#ifndef _Static_assert",
@@ -614,7 +613,7 @@ def gen_fw_files(args: Namespace) -> None:
     if args.firmware_version is not None:
         versions["fw_version"].default = args.firmware_version
 
-    odc, odh = generate_canopennode(arg_card, od)
+    odc, odh = generate_canopennode(od)
 
     args.dir_path.mkdir(parents=True, exist_ok=True)
     with (args.dir_path / "OD.c").open("w") as f:

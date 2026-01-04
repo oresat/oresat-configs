@@ -15,7 +15,15 @@ jobs:
     timeout-minutes: 10
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
+
+    - name: Checkout CANopenNode
+      run: git clone https://github.com/CANopenNode/CANopenNode.git
+      # FIXME: does it make sense to use actions/checkout? This didn't work when I tried it
+      # uses: actions/checkout@v6
+      # with:
+      #   repository: CANopenNode/CANopenNode
+      #   path: CANopenNode
 
     - name: Set up Python 3.9
       uses: actions/setup-python@v5
@@ -32,8 +40,8 @@ jobs:
 
     - name: Install Kaitai Struct Compiler
       run: |
-        curl -LO https://github.com/kaitai-io/kaitai_struct_compiler/releases/download/0.10/kaitai-struct-compiler_0.10_all.deb
-        sudo apt install -y ./kaitai-struct-compiler_0.10_all.deb
+        curl -fsSLO https://github.com/kaitai-io/kaitai_struct_compiler/releases/download/0.11/kaitai-struct-compiler_0.11_all.deb
+        sudo apt-get install -y ./kaitai-struct-compiler_0.11_all.deb
 
     - name: Format with Ruff
       run: ruff format --check --diff
@@ -64,6 +72,7 @@ jobs:
         pip install dist/*.whl
         oresat-configs > /dev/null
         oresat-configs fw-files c3
+        ./tests/gen-all-fw.sh ./od CANopenNode
         oresat-configs dcf c3
         oresat-configs od c3 > /dev/null
         oresat-configs kaitai
