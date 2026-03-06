@@ -240,7 +240,7 @@ def gen_dcf(args: Namespace) -> None:
     if args.card.lower() == "all":
         ods = list(config.od_db.values())
     else:
-        ods = [config.od_db[args.card.lower()]]
+        ods = [config.od_db[config.name_from_alias(args.card)]]
 
     for od in ods:
         name, lines = generate_dcf(od)

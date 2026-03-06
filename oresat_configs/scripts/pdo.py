@@ -138,7 +138,7 @@ def pdo_main(args: Namespace) -> None:
     """The utility for managing PDOs"""
 
     config = OreSatConfig(args.oresat)
-    od = config.od_db[args.card]
+    od = config.od_db[config.name_from_alias(args.card)]
 
     if args.list:
         listpdos(od)
