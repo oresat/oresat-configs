@@ -71,25 +71,22 @@ objects:
     description: last solve calculations
     subindexes:
       - subindex: 0x1
-        name: right_ascension
-        data_type: int16
-        description: the right ascension of the satellite
+        name: attitude_i
+        data_type: float32
+        description: the i component of the estimated attitude quaternion
         access_type: ro
-        unit: deg
 
       - subindex: 0x2
-        name: declination
-        data_type: int16
-        description: the delination of the satellite
+        name: attitude_j
+        data_type: float32
+        description: the j component of the estimated attitude quaternion
         access_type: ro
-        unit: deg
 
       - subindex: 0x3
-        name: roll
-        data_type: int16
-        description: the roll of the satellite
+        name: attitude_k
+        data_type: float32
+        description: the k component of the estimage attitude quaternion
         access_type: ro
-        unit: deg
 
       - subindex: 0x4
         name: time_since_midnight
@@ -97,6 +94,18 @@ objects:
         description: time since midnight when the image was captured
         access_type: ro
         unit: ms
+
+      - subindex: 0x5
+        name: attitude_real
+        data_type: float32
+        description: real (scalar) component of the estimated attitude quaternion
+        access_type: ro
+
+      - subindex: 0x6
+        name: attitude_known
+        data_type: bool
+        description: flag indicating whether a valid attitude is available
+        access_type: ro
 
   - index: 0x4003
     name: capture_filter
@@ -140,10 +149,15 @@ tpdos:
   - num: 3
     fields:
       - [status]
-      - [orientation, right_ascension]
-      - [orientation, declination]
-      - [orientation, roll]
+      - [orientation, attitude_known]
+      - [orientation, time_since_midnight]
 
   - num: 4
     fields:
-      - [orientation, time_since_midnight]
+      - [orientation, attitude_real]
+      - [orientation, attitude_i]
+
+  - num: 5
+    fields:
+      - [orientation, attitude_j]
+      - [orientation, attitude_k]
