@@ -26,48 +26,59 @@ jobs:
       #   path: CANopenNode
 
     - name: Set up Python 3.9
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.9"
         cache: "pip"
 
     - name: Install dependencies
+      id: dependencies
       run: |
         sudo apt update
         sudo apt install -y libxml2-utils libyaml-0-2
         python -m pip install --upgrade pip
-        pip install .[dev]
+        pip install . --group dev
 
     - name: Install Kaitai Struct Compiler
+      id: kaitai
       run: |
         curl -fsSLO https://github.com/kaitai-io/kaitai_struct_compiler/releases/download/0.11/kaitai-struct-compiler_0.11_all.deb
         sudo apt-get install -y ./kaitai-struct-compiler_0.11_all.deb
 
     - name: Format with Ruff
+      if: always() && steps.dependencies.conclusion == 'success'
       run: ruff format --check --diff
 
     - name: Lint with Ruff
+      if: always() && steps.dependencies.conclusion == 'success'
       run: ruff check
 
     - name: Typecheck with mypy
+      if: always() && steps.dependencies.conclusion == 'success'
       run: |
         mypy --install-types --non-interactive oresat_configs tests
         mypy oresat_configs tests
 
     - name: Test with pytest
+      if: always() && steps.dependencies.conclusion == 'success'
       run: pytest
 
     - name: Lint Yaml with yamllint
+      if: always() && steps.dependencies.conclusion == 'success'
       run: yamllint oresat_configs
 
     - name: Test building pypi package
+      id: pkgbuild
+      if: always() && steps.dependencies.conclusion == 'success'
       run: python -m build
 
     - name: Test building sphinx docs
+      if: always() && steps.dependencies.conclusion == 'success'
       # TZ=UTC fixes a crash when running sphinx inside nektos/act
       run: TZ=UTC make -C docs html
 
     - name: Test installed scripts
+      if: always() && steps.pkgbuild.conclusion == 'success'
       run: |
         pip install dist/*.whl
         oresat-configs > /dev/null
@@ -84,4 +95,5 @@ jobs:
         pip uninstall -y oresat-configs
 
     - name: Compile Kaitai
+      if: always() && steps.kaitai.conclusion == 'success'
       run: ksc -t python oresat0_5.ksy

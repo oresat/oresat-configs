@@ -48,7 +48,7 @@ $ pip install oresat-configs
 For developers:
 ```bash
 $ sudo apt install libyaml-0-2
-$ pip install -e .[dev]
+$ pip install -e . --group dev
 ```
 
 
