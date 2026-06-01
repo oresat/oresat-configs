@@ -24,6 +24,7 @@ from ..constants import __version__
 from . import (
     gen_dbc,
     gen_dcf,
+    gen_eds,
     gen_fw_files,
     gen_kaitai,
     gen_xtce,
@@ -48,6 +49,7 @@ _SCRIPTS = [
     sdo_transfer,
     pdo,
     gen_dcf,
+    gen_eds,
     gen_kaitai,
     gen_xtce,
     gen_fw_files,

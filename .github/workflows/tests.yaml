@@ -80,6 +80,7 @@ jobs:
         xmllint --noout --schema tests/SpaceSystem.xsd oresat0_5.xtce
         oresat-configs cards > /dev/null
         oresat-configs pdo c3 --list > /dev/null
+        oresat-configs eds c3
         pip uninstall -y oresat-configs
 
     - name: Compile Kaitai
