@@ -640,6 +640,14 @@ objects:
         access_type: ro
         default: "{}"
 
+
+  - index: 0x400f
+    name: performance
+    data_type: bool
+    description: set the cpu frequency to maximum or low. 
+    access_type: rw
+    default: true
+
 tpdos:
   - num: 1  # time sync TPDO
     fields:
@@ -715,3 +723,4 @@ fram:
   - [uhf, rx_bytes]
   - [uhf, rx_packets]
   - [tx_control, enable]
+  - [performance]
