@@ -40,6 +40,7 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
                 obj2.access_type = obj.access_type
                 obj2.high_limit = obj.high_limit
                 obj2.low_limit = obj.low_limit
+                obj2.default = obj.default
             else:
                 for sub_obj in obj.subindexes:
                     sub_overlayed = False
@@ -50,6 +51,7 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
                             sub_obj2.access_type = sub_obj.access_type
                             sub_obj2.high_limit = sub_obj.high_limit
                             sub_obj2.low_limit = sub_obj.low_limit
+                            sub_obj2.default = sub_obj.default
                             overlayed = True
                             sub_overlayed = True
                             break  # obj was found, search for next one
@@ -64,7 +66,7 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
     for overlay_tpdo in overlay_config.tpdos:
         overlayed = False
         for card_tpdo in card_config.tpdos:
-            if card_tpdo.num == card_tpdo.num:
+            if card_tpdo.num == overlay_tpdo.num:
                 card_tpdo.fields = overlay_tpdo.fields
                 card_tpdo.event_timer_ms = overlay_tpdo.event_timer_ms
                 card_tpdo.inhibit_time_ms = overlay_tpdo.inhibit_time_ms
@@ -78,7 +80,7 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
     for overlay_rpdo in overlay_config.rpdos:
         overlayed = False
         for card_rpdo in card_config.rpdos:
-            if card_rpdo.num == card_rpdo.num:
+            if card_rpdo.num == overlay_rpdo.num:
                 card_rpdo.card = overlay_rpdo.card
                 card_rpdo.tpdo_num = overlay_rpdo.tpdo_num
                 overlayed = True
