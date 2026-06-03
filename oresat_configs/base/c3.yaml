@@ -640,6 +640,13 @@ objects:
         access_type: ro
         default: "{}"
 
+  - index: 0x400f
+    name: performance_override
+    data_type: bool
+    description: force the cpu governor to always be performance
+    access_type: rw
+    default: false
+
 tpdos:
   - num: 1  # time sync TPDO
     fields:
