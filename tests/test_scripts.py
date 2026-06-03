@@ -1,9 +1,11 @@
 from argparse import Namespace
+from pathlib import Path
 
 from oresat_configs import Mission, OreSatConfig
 from oresat_configs.scripts import (
     gen_dbc,
     gen_dcf,
+    gen_eds,
     gen_fw_files,
     gen_kaitai,
     gen_xtce,
@@ -57,3 +59,10 @@ class TestScripts:
         for name in config.od_db:
             args.card = name
             print_od.print_od(args)
+
+    def test_eds(self, config: OreSatConfig, tmp_path: Path) -> None:
+        args = Namespace()
+        args.oresat = config.mission.arg
+        args.card = "all"
+        args.dir_path = tmp_path
+        gen_eds.gen_eds(args)
