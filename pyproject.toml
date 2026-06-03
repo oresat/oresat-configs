@@ -24,7 +24,7 @@ dependencies = [
 ]
 dynamic = ["version"]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "build",
     "mypy >= 1.18.2",

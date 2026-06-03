@@ -42,13 +42,13 @@ For regular users: `libyaml` should be installed by default on
 reasonable systems, but it never hurts to make sure.
 
 ```bash
-$ sudo apt install libyaml-0-2
-$ pip install oresat-configs
+sudo apt install libyaml-0-2
+pip install oresat-configs
 ```
 For developers:
 ```bash
-$ sudo apt install libyaml-0-2
-$ pip install -e .[dev]
+sudo apt install libyaml-0-2
+pip install -e . --group dev
 ```
 
 
@@ -58,15 +58,15 @@ aren't built with them so we need to install from the source package:
 
 Installing the first time:
 ```bash
-$ sudo apt install libyaml-dev
-$ pip install --no-binary pyyaml oresat-configs
+sudo apt install libyaml-dev
+pip install --no-binary pyyaml oresat-configs
 ```
 
 Fixing an already installed pyyaml: (see here if you get "ImportError: pyyaml
 missing/installed without libyaml bindings.")
 ```bash
-$ sudo apt install libyaml-dev
-$ pip install --force-reinstall --no-cache-dir --no-binary pyyaml pyyaml
+sudo apt install libyaml-dev
+pip install --force-reinstall --no-cache-dir --no-binary pyyaml pyyaml
 ```
 
 ## Updating a Config
@@ -75,13 +75,20 @@ After updating configs for card(s), run the unit tests to validate all the
 configs.
 
 ```bash
-$ python3 -m unittest
+pytest
 ```
 
 If there are no errors, the configs are valid.
 
 Build and install the new version of oresat-configs to build, test, and/or
-import with.
+import with. If you have both oresat-configs and the project using it on the
+same system it can be very useful to install this project as an editable dependency
+there, then local changes you make here show up immediately.
+
+In the project used for testing:
+```bash
+pip install --editable <path to oresat-configs directory>
+```
 
 Once the change have been tested with firmware/software, open a Pull
 Request to this repo to get all changes into the next release.
