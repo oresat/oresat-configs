@@ -36,7 +36,7 @@ jobs:
         sudo apt update
         sudo apt install -y libxml2-utils libyaml-0-2
         python -m pip install --upgrade pip
-        pip install .[dev]
+        pip install . --group dev
 
     - name: Install Kaitai Struct Compiler
       run: |
