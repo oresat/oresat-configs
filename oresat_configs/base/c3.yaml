@@ -641,11 +641,11 @@ objects:
         default: "{}"
 
   - index: 0x400f
-    name: performance
+    name: performance_override
     data_type: bool
-    description: set the cpu frequency to maximum or low
+    description: force the cpu governor to always be performance
     access_type: rw
-    default: true
+    default: false
 
 tpdos:
   - num: 1  # time sync TPDO
@@ -722,4 +722,3 @@ fram:
   - [uhf, rx_bytes]
   - [uhf, rx_packets]
   - [tx_control, enable]
-  - [performance]
