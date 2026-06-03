@@ -231,6 +231,12 @@ objects:
         description: add a updater system status file to the fread cache
         access_type: wo
 
+      - subindex: 0x6
+        name: check_for_updates
+        data_type: bool
+        description: force the updater service to check for and distribute update files
+        access_type: wo
+
   - index: 0x3007
     name: logs
     object_type: record
