@@ -70,7 +70,7 @@ class Mission(MissionConsts, Enum):
     @classmethod
     def default(cls) -> Mission:
         """Returns the currently active mission"""
-        return cls.ORESAT0_5
+        return cls.ORESAT1
 
     @classmethod
     def from_string(cls, val: str) -> Mission:
