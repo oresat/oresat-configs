@@ -46,7 +46,7 @@ def build_arguments(subparsers: Any) -> None:
         ["name", "The canonical name, suitable for arguments of other scripts"],
         ["nice_name", "A nice name for the card"],
         ["node_id", "CANopen node id"],
-        ["processor", 'Processor type; e.g.: "octavo", "stm32", or "none"'],
+        ["processor", 'Processor type; e.g.: "octavo", "stm32", "mcxn", or "none"'],
         ["opd_address", "OPD address"],
         ["opd_always_on", "Keep the card on all the time. Only for battery cards"],
         ["child", "Optional child node name. Useful for CFC cards."],
