@@ -83,8 +83,7 @@ def sdo_transfer(args: Namespace) -> None:
     elif args.mode in ["w", "write"]:
         mode = 'write'
     else:
-        print('Invalid mode: must be "r", "read", "w", or "write"')
-        return
+        raise SystemExit('Invalid mode: must be "r", "read", "w", or "write"')
 
     # validate object exist and make sdo obj
     try:
@@ -92,8 +91,7 @@ def sdo_transfer(args: Namespace) -> None:
         if isinstance(sdo, (SdoRecord, SdoArray)):
             sdo = sdo[args.subindex]
     except KeyError as e:
-        print(e)
-        return
+        raise SystemExit(f"OD Object not found: {e}") from None
 
     if sdo.od.data_type in BINARY_TYPES:
         file = Path(args.value)
@@ -136,4 +134,4 @@ def sdo_transfer(args: Namespace) -> None:
                 else:
                     sdo.phys = value
         except (canopen.SdoAbortedError, FileNotFoundError) as e:
-            print(e)
+            raise SystemExit(f"SDO failed: {e}") from None
