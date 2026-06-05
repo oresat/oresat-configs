@@ -5,20 +5,7 @@ base=$(dirname $0)
 OD=${1:-$base/od}
 canopennode=${2:-$base/../CANopenNode}
 
-# FIXME: Generate list from oresat-configs card --names once this is implemented
-cards=(
-    base
-    c3
-    battery
-    adcs
-    rw
-    diode_test
-    gps
-    dxwifi
-    cfc
-    star_tracker
-    solar
-)
+cards=($(python -m oresat_configs cards --names))
 
 for name in "${cards[@]}"; do
     python -m oresat_configs fw-files $name -d $OD/$name

@@ -23,7 +23,7 @@ class Card:
     node_id: int
     """CANopen node id."""
     processor: str
-    """Processor type; e.g.: "octavo", "stm32", or "none"."""
+    """Processor type; e.g.: "octavo", "stm32", "mcxn", or "none"."""
     opd_address: int
     """OPD address."""
     opd_always_on: bool
@@ -53,7 +53,7 @@ class Card:
             common = None
         elif self.processor == "octavo":
             common = basedir / "sw_common.yaml"
-        elif self.processor == "stm32":
+        elif self.processor in ("stm32", "mcxn"):
             common = basedir / "fw_common.yaml"
         else:
             raise ValueError(f"Invalid processor {self.processor}")

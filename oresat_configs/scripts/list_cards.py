@@ -40,13 +40,18 @@ def build_arguments(subparsers: Any) -> None:
         type=lambda x: x.lower().removeprefix("oresat"),
         help="Oresat Mission. (Default: %(default)s)",
     )
+    parser.add_argument(
+        "--names",
+        action='store_true',
+        help="Print just the list of card names instead of a full table",
+    )
     # I'd like to pull the descriptions directly out of Card but attribute docstrings are discarded
     # and not accessable at runtime.
     rows = [
         ["name", "The canonical name, suitable for arguments of other scripts"],
         ["nice_name", "A nice name for the card"],
         ["node_id", "CANopen node id"],
-        ["processor", 'Processor type; e.g.: "octavo", "stm32", or "none"'],
+        ["processor", 'Processor type; e.g.: "octavo", "stm32", "mcxn", or "none"'],
         ["opd_address", "OPD address"],
         ["opd_always_on", "Keep the card on all the time. Only for battery cards"],
         ["child", "Optional child node name. Useful for CFC cards."],
@@ -62,6 +67,13 @@ def list_cards(args: Namespace) -> None:
 
     with as_file(Mission.from_string(args.oresat).cards) as path:
         cards = cards_from_csv(path)
+    if args.names:
+        _print_names(cards)
+    else:
+        _print_table(cards)
+
+
+def _print_table(cards: dict[str, Card]) -> None:
     data: dict[str, list[str]] = defaultdict(list)
     data["name"] = list(cards)
     for card in cards.values():
@@ -74,3 +86,12 @@ def list_cards(args: Namespace) -> None:
                 continue
             data[key].append(value)
     print(tabulate(data, headers="keys"))
+
+
+def _print_names(cards: dict[str, Card]) -> None:
+    print("base")
+    for name, card in cards.items():
+        # Since this is intended for passing to other comamnds and most of them deal with ODs
+        # this skips cards without ODs. Maybe this is a footgun, we'll find out later.
+        if card.processor != "none":
+            print(name)

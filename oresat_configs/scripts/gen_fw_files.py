@@ -594,8 +594,7 @@ def gen_fw_files(args: Namespace) -> None:
     config = OreSatConfig(args.oresat)
 
     if args.dir_path.exists() and not args.dir_path.is_dir():
-        print(f"'{args.dir_path}' already exists and is not a directory")
-        return
+        raise SystemExit(f"'{args.dir_path}' already exists and is not a directory")
 
     if args.card.lower() == 'base':
         od = config.fw_base_od
@@ -603,8 +602,7 @@ def gen_fw_files(args: Namespace) -> None:
         try:
             od = config.od_db[config.name_from_alias(args.card)]
         except KeyError:
-            print(f"invalid oresat card: {args.card}")
-            return
+            raise SystemExit(f"invalid oresat card: {args.card}") from None
 
     versions = od["versions"]
     assert isinstance(versions, ODRecord)

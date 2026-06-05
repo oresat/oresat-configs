@@ -88,7 +88,7 @@ jobs:
         oresat-configs od c3 > /dev/null
         oresat-configs kaitai
         oresat-configs xtce
-        xmllint --noout --schema tests/SpaceSystem.xsd oresat0_5.xtce
+        xmllint --noout --schema tests/SpaceSystem.xsd oresat1.xtce
         oresat-configs cards > /dev/null
         oresat-configs pdo c3 --list > /dev/null
         oresat-configs eds c3
@@ -96,4 +96,4 @@ jobs:
 
     - name: Compile Kaitai
       if: always() && steps.kaitai.conclusion == 'success'
-      run: ksc -t python oresat0_5.ksy
+      run: ksc -t python oresat1.ksy

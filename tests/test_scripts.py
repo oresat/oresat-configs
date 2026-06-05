@@ -46,6 +46,9 @@ class TestScripts:
     def test_list_card(self, mission: Mission) -> None:
         args = Namespace()
         args.oresat = mission.arg
+        args.names = False
+        list_cards.list_cards(args)
+        args.names = True
         list_cards.list_cards(args)
 
     def test_pdo(self, config: OreSatConfig) -> None:
