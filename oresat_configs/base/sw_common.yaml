@@ -60,6 +60,13 @@ objects:
         access_type: const
         default: "0.0.0"
 
+      - subindex: 0x5
+        name: board_number
+        data_type: uint16
+        description: board number from eeprom
+        access_type: ro
+        default: 0
+
   - index: 0x3003
     name: system
     object_type: record
