@@ -218,6 +218,12 @@ objects:
         access_type: ro
         unit: dB
 
+      - subindex: 0x4
+        name: tot_reset_count
+        data_type: uint8
+        description: uhf tot times reset since boot
+        access_type: ro
+
   - index: 0x4008
     name: edl
     object_type: record
