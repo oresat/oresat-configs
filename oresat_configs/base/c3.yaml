@@ -604,47 +604,113 @@ objects:
       - subindex: 0x1
         name: mode
         data_type: uint8
-        description: requested adcs mission mode to follow
+        description: adcs guidance mode
         access_type: rw
         value_descriptions:
-          none: 0
-          standby: 1
-          hold: 2
-          calibrate: 3
-          spindown: 4
-          detumble: 5
-          bbq: 6
-          point: 7
-          manual: 8
+          target: 0
+          nadir: 1
+          min_drag: 2
+          max_drag: 3
 
       - subindex: 0x2
-        name: status
+        name: control_mode
         data_type: uint8
-        description: adcs service status
-        access_type: ro
+        description: adcs control mode
+        access_type: rw
         value_descriptions:
-          none: 0
-          idle: 1
-          starting: 2
-          mission: 3
-          degraded: 4
-          unsafe: 5
-          error: 6
-          done: 7
+          rw_pointing: 0
+          mtb_pointing: 1
+          detumble: 2
+          thermal_detumble: 3
+          thermal_reorient: 4
+          thermal_spinup: 5
 
       - subindex: 0x3
-        name: signals
-        data_type: str
-        description: json string of requested control signals
+        name: pointing_reference
+        data_type: uint8
+        description: boresight or pointing reference axis of the spacecraft
         access_type: rw
-        default: "{}"
+        value_descriptions:
+          selfie_cam: 0
+          cirrus_flux: 1
 
       - subindex: 0x4
-        name: feedback
-        data_type: str
-        description: json string of feedback signals
-        access_type: ro
-        default: "{}"
+        name: orbital_period
+        data_type: float32
+        description: the orbital period, in seconds
+        access_type: rw
+        unit: s
+
+      - subindex: 0x5
+        name: orbital_inclination
+        data_type: float32
+        description: the orbital inclination, in degrees
+        access_type: rw
+        unit: degrees
+
+      - subindex: 0x6
+        name: lqr_max_input
+        data_type: float32
+        description: max torque for LQR tuning (reaction wheel)
+        access_type: rw
+
+      - subindex: 0x7
+        name: lqr_max_error
+        data_type: float32
+        description: max torque error for LQR (reaction wheel)
+        access_type: rw
+
+      - subindex: 0x8
+        name: lqr_max_rate
+        data_type: float32
+        description: max torque rate for LQR (reaction wheel)
+        access_type: rw
+
+      - subindex: 0x9
+        name: lqr_max_input_mag
+        data_type: float32
+        access_type: rw
+        description: max torque for LQR (magnetorquer)
+
+      - subindex: 0xa
+        name: lqr_max_error_mag
+        data_type: float32
+        access_type: rw
+        description: max torque error (magnetorquer)
+
+      - subindex: 0xb
+        name: lqr_max_rate_mag
+        data_type: float32
+        access_type: rw
+        description: max torque rate (magnetorquer)
+
+      - subindex: 0xc
+        name: variable_gain
+        data_type: bool
+        description: enable gain scheduling for fine pointing
+        access_type: rw
+        default: false
+
+      - subindex: 0xd
+        name: target_lat
+        data_type: float32
+        description: pointing target latitude
+        access_type: rw
+        unit: degrees
+
+      - subindex: 0xe
+        name: target_lon
+        data_type: float32
+        description: pointing target longitude
+        access_type: rw
+        unit: degrees
+
+      - subindex: 0xf
+        name: target_height
+        data_type: float32
+        description: pointing target height
+        access_type: rw
+        unit: m
 
   - index: 0x400f
     name: performance_override
@@ -652,6 +718,17 @@ objects:
     description: force the cpu governor to always be performance
     access_type: rw
     default: false
+
+  - index: 0x4010
+    name: adcs_rw_orientations
+    object_type: array
+    description: adcs reaction wheel orientations
+    generate_subindexes:
+      name: data
+      subindexes: fixed_length
+      length: 16
+      data_type: float32
+      access_type: rw
 
 tpdos:
   - num: 1  # time sync TPDO
@@ -664,7 +741,7 @@ tpdos:
       - [tx_control, enable]
       - [mode]
       - [adcs_manager, mode]
-      - [adcs_manager, status]
+      - [adcs_manager, control_mode]
     event_timer_ms: 5000
 
   - num: 3
