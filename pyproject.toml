@@ -27,6 +27,7 @@ dev = [
     "build",
     "mypy >= 1.18.2",
     "pytest",
+    "pytest-cov",
     "ruff",
     "sphinx",
     "sphinx-rtd-theme",
@@ -86,3 +87,9 @@ ignore = [
 
 [tool.ruff.format]
 quote-style = "preserve"
+
+[tool.pytest.ini_options]
+addopts = [
+    "--cov=.",
+    "--cov-report=html:htmlcov"
+]
