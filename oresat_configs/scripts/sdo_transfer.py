@@ -5,9 +5,8 @@ This scipt act as CANopen master node, allowing it to read and write other
 node's Object Dictionaries.
 """
 
-from argparse import Namespace
+from argparse import Namespace, _SubParsersAction
 from pathlib import Path
-from typing import Any
 
 import canopen
 from canopen.objectdictionary import (
@@ -27,7 +26,7 @@ STRING_TYPES = (VISIBLE_STRING, UNICODE_STRING)
 BINARY_TYPES = (OCTET_STRING, DOMAIN)
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this

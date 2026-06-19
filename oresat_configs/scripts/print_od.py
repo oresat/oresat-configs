@@ -1,7 +1,6 @@
 """Print out a card's objects directory."""
 
-from argparse import Namespace
-from typing import Any
+from argparse import Namespace, _SubParsersAction
 
 from canopen.objectdictionary import DeviceInformation, ODVariable
 
@@ -9,7 +8,7 @@ from .. import Mission, OreSatConfig
 from ..card_config import DATA_TYPE_DEFAULTS
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this
@@ -42,7 +41,7 @@ def build_arguments(subparsers: Any) -> None:
     )
 
 
-def format_default(value: Any) -> str:
+def format_default(value: float | bytes | str | None) -> str:
     """Format default value based off of python data type."""
     if isinstance(value, int) and not isinstance(value, bool):
         return hex(value)

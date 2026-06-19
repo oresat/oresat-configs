@@ -1,10 +1,9 @@
 """Prints the known list of oresat cards"""
 
-from argparse import Namespace, RawDescriptionHelpFormatter
+from argparse import Namespace, RawDescriptionHelpFormatter, _SubParsersAction
 from collections import defaultdict
 from dataclasses import asdict, fields
 from importlib.resources import as_file
-from typing import Any
 
 from tabulate import tabulate
 
@@ -12,7 +11,7 @@ from ..card_info import Card, cards_from_csv
 from ..constants import Mission
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this

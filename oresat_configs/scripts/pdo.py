@@ -1,15 +1,14 @@
 """Tools for working with PDOs"""
 
 import time
-from argparse import Namespace
-from typing import Any
+from argparse import Namespace, _SubParsersAction
 
 import canopen
 
 from .. import Mission, OreSatConfig
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this

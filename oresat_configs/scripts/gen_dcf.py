@@ -1,9 +1,9 @@
 """Generate a DCF for from an OreSat card's object directory."""
 
-from argparse import Namespace
+from argparse import Namespace, _SubParsersAction
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import canopen
 from canopen.objectdictionary import Variable
@@ -11,7 +11,7 @@ from canopen.objectdictionary import Variable
 from .. import Mission, OreSatConfig
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this
