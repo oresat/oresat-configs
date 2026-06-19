@@ -4,15 +4,11 @@ OreSat OD constants
 Seperate from __init__.py to avoid cirular imports.
 """
 
-from __future__ import annotations
-
 from dataclasses import InitVar, dataclass, field
 from enum import Enum, unique
 from importlib import abc, resources
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from types import ModuleType
+from types import ModuleType
+from typing import Self
 
 from . import oresat0, oresat0_5, oresat1
 
@@ -68,12 +64,12 @@ class Mission(MissionConsts, Enum):
         return str(self).lower().replace(".", "_")
 
     @classmethod
-    def default(cls) -> Mission:
+    def default(cls) -> Self:
         """Returns the currently active mission"""
         return cls.ORESAT1
 
     @classmethod
-    def from_string(cls, val: str) -> Mission:
+    def from_string(cls, val: str) -> Self:
         """Fetches the Mission associated with an appropriate string
 
         Appropriate strings are the arg (0, 0.5, ...), optionally prefixed with
@@ -86,7 +82,7 @@ class Mission(MissionConsts, Enum):
         raise ValueError(f"invalid oresat mission: {val}")
 
     @classmethod
-    def from_id(cls, val: int) -> Mission:
+    def from_id(cls, val: int) -> Self:
         """Fetches the Mission associated with an appropriate ID
 
         Appropriate IDs are integers 1, 2, ... that corespond to the specific

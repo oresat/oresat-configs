@@ -25,10 +25,10 @@ jobs:
       #   repository: CANopenNode/CANopenNode
       #   path: CANopenNode
 
-    - name: Set up Python 3.9
+    - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.9"
+        python-version: "3.11"
         cache: "pip"
 
     - name: Install dependencies
@@ -55,9 +55,7 @@ jobs:
 
     - name: Typecheck with mypy
       if: always() && steps.dependencies.conclusion == 'success'
-      run: |
-        mypy --install-types --non-interactive oresat_configs tests
-        mypy oresat_configs tests
+      run: mypy oresat_configs tests
 
     - name: Test with pytest
       if: always() && steps.dependencies.conclusion == 'success'

@@ -5,13 +5,9 @@ This scipt act as CANopen master node, allowing it to read and write other
 node's Object Dictionaries.
 """
 
-from __future__ import annotations
-
+from argparse import Namespace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from argparse import Namespace
+from typing import Any
 
 import canopen
 from canopen.objectdictionary import (

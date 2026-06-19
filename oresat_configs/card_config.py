@@ -1,25 +1,10 @@
 """Load a card config file."""
 
-# dacite doesn't work with | from __future__.annotations on 3.9, remove when upgrading to 3.10+
-# ruff: noqa: UP007, UP045
-from __future__ import annotations
-
-from collections.abc import Mapping  # noqa: TC003 dacite uses type information at runtime
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from itertools import chain
-from typing import TYPE_CHECKING, Literal, NamedTuple, Optional, Union, cast
-
-from .odtypes import (
-    COBId,
-    HighestSubindexSupported,
-    PDOCommunicationParameter,
-    PDOMappingParameter,
-    PDOSync,
-    PDOTimer,
-)
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
+from typing import Literal, NamedTuple, Self, cast
 
 from canopen.objectdictionary import (
     BOOLEAN,
@@ -44,6 +29,15 @@ from canopen.objectdictionary import (
 )
 from dacite import Config, from_dict
 from yaml import CLoader, load
+
+from .odtypes import (
+    COBId,
+    HighestSubindexSupported,
+    PDOCommunicationParameter,
+    PDOMappingParameter,
+    PDOSync,
+    PDOTimer,
+)
 
 DataType = Literal[
     'bool',
@@ -103,24 +97,24 @@ class ConfigObject:
     """
     Access type of object over the CAN bus, can be ``"rw"``, ``"ro"``, ``"wo"``, or ``"const"``.
     """
-    default: Union[bool, int, float, str, bytes, None] = None
+    default: bool | int | float | str | bytes | None = None
     """Default value of object."""
     description: str = ""
     """Description of object."""
     value_descriptions: dict[str, int] = field(default_factory=dict)
     """Optional: Can be used to define enum values for an unsigned integer data types."""
-    bit_definitions: Mapping[str, Union[int, str, list[int]]] = field(default_factory=dict)
+    bit_definitions: Mapping[str, int | str | list[int]] = field(default_factory=dict)
     """Optional: Can be used to define bitfield of an unsigned integer data types."""
     unit: str = ""
     """Optional engineering unit for the object."""
     scale_factor: float = 1
     """Can be used to scale a integer value to a engineering (float) value."""
-    low_limit: Optional[int] = None
+    low_limit: int | None = None
     """
     The lower raw limit for value. No need to set this if it limit is the lower limit of the data
     type.
     """
-    high_limit: Optional[int] = None
+    high_limit: int | None = None
     """
     The higher raw limit for value. No need to set this if it limit is the higher limit of the data
     type.
@@ -260,6 +254,32 @@ class ConfigObject:
 
 
 @dataclass
+class SubindexObject(ConfigObject):
+    """
+    Object at subindex.
+
+    Example:
+
+    .. code-block:: yaml
+
+        subindex: 0x1
+        name: length
+        data_type: uint8
+        description: number of files in fread cache
+        access_type: ro
+    """
+
+    subindex: int = 0
+    """
+    Subindex of object, start at subindex 1 (subindex 0 aka highest_index_supported will be
+    generated).
+    """
+
+    def to_entry(self, index: int) -> ODVariable:
+        return self._to_variable(index, self.subindex)
+
+
+@dataclass
 class GenerateSubindex(ConfigObject):
     """
     Used to generate subindexes for an array.
@@ -316,7 +336,7 @@ class GenerateSubindex(ConfigObject):
           scale_factor: 0.001
     """
 
-    subindexes: Optional[Literal['fixed_length', 'node_ids']] = None
+    subindexes: Literal['fixed_length', 'node_ids'] | None = None
     """Subindexes of objects to generate."""
 
     def _to_subindex(self, name: str, subindex: int) -> SubindexObject:
@@ -349,32 +369,6 @@ class GenerateSubindex(ConfigObject):
 
 
 @dataclass
-class SubindexObject(ConfigObject):
-    """
-    Object at subindex.
-
-    Example:
-
-    .. code-block:: yaml
-
-        subindex: 0x1
-        name: length
-        data_type: uint8
-        description: number of files in fread cache
-        access_type: ro
-    """
-
-    subindex: int = 0
-    """
-    Subindex of object, start at subindex 1 (subindex 0 aka highest_index_supported will be
-    generated).
-    """
-
-    def to_entry(self, index: int) -> ODVariable:
-        return self._to_variable(index, self.subindex)
-
-
-@dataclass
 class IndexObject(ConfigObject):
     """
     Object at index.
@@ -397,7 +391,7 @@ class IndexObject(ConfigObject):
     """Object type; must be ``"variable"``, ``"array"``, or ``"record"``."""
     subindexes: list[SubindexObject] = field(default_factory=list)
     """Defines subindexes for records and arrays."""
-    generate_subindexes: Optional[GenerateSubindex] = None
+    generate_subindexes: GenerateSubindex | None = None
     """Used to generate subindexes for arrays."""
 
     def __post_init__(self) -> None:
@@ -413,7 +407,7 @@ class IndexObject(ConfigObject):
         self.subindexes = self.generate_subindexes.to_subindexes(node_ids)
         self.generate_subindexes = None
 
-    def to_entry(self) -> Union[ODArray, ODRecord, ODVariable]:
+    def to_entry(self) -> ODArray | ODRecord | ODVariable:
         if self.object_type == 'variable':
             if self.subindexes:
                 raise ValueError("Variable object has subindexes")
@@ -454,7 +448,7 @@ class IndexObject(ConfigObject):
         return rec
 
     @classmethod
-    def from_dict(cls, data: dict) -> IndexObject:
+    def from_dict(cls, data: dict[str, float | str]) -> Self:
         return from_dict(data_class=cls, data=data, config=Config(strict=True))
 
 
@@ -613,7 +607,7 @@ class CardConfig:
         raise ValueError(f'tpdo field {field} not found in config.objects')
 
     @classmethod
-    def from_yaml(cls, config_path: Path) -> CardConfig:
+    def from_yaml(cls, config_path: Path) -> Self:
         """Load a card YAML config file."""
 
         with config_path.open() as f:

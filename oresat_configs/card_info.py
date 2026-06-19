@@ -1,14 +1,9 @@
 """Utilities for top level cards definitions, not in the OD"""
 
-from __future__ import annotations
-
 import csv
 from dataclasses import InitVar, dataclass, field, fields
 from importlib import abc, resources
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
 
 from . import base
 

@@ -2,7 +2,7 @@
 
 import xml.etree.ElementTree as ET
 from argparse import Namespace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -147,7 +147,7 @@ def generate_xtce(config: OreSatConfig) -> ET.ElementTree:
             "validationStatus": "Working",
             "classification": "NotClassified",
             "version": f'{beacon["revision"].value}.0',
-            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "date": datetime.now(UTC).strftime("%Y-%m-%d"),
         },
     )
     author_set = ET.SubElement(header, "AuthorSet")

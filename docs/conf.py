@@ -1,7 +1,7 @@
 """Configuration file for the Sphinx documentation builder."""
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # -- Path setup --------------------------------------------------------------
@@ -20,7 +20,7 @@ from oresat_configs import __version__
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "OreSat Configs"
-copyright = f"{datetime.now(timezone.utc).year}, Portland State Aerospace Society"  # noqa: A001
+copyright = f"{datetime.now(UTC).year}, Portland State Aerospace Society"  # noqa: A001
 author = "PSAS"
 release = __version__
 

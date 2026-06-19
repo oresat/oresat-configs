@@ -1,14 +1,10 @@
 """Generate a OreSat card's CANopenNode OD.[c/h] files"""
 
-from __future__ import annotations
-
+from argparse import Namespace
 from collections.abc import Iterable
 from itertools import chain, islice
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    from argparse import Namespace
+from typing import Any, cast
 
 import canopen
 from canopen.objectdictionary import ODArray, ODRecord, ODVariable
@@ -63,7 +59,7 @@ def build_arguments(subparsers: Any) -> None:
     )
 
 
-def indent(*lines: str | Iterable) -> list[str]:
+def indent(*lines: Iterable[str] | Iterable[Iterable[str]]) -> list[str]:
     indented = []
     for line in lines:
         if isinstance(line, str):

@@ -1,7 +1,5 @@
 """OreSat OD database"""
 
-from __future__ import annotations
-
 # Checks that pyyaml is installed correctly. For performance reasons it must use the libyaml C
 # bindings. To use them both libyaml must be installed on the local system, and pyyaml must have
 # been built to use them. This works correctly on x86 systems, but on arm pyyaml is built by
