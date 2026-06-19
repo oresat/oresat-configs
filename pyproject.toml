@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools_scm"]
+requires = ["setuptools>=80", "setuptools_scm[simple]>=9.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -28,8 +28,6 @@ dev = [
     "mypy >= 1.18.2",
     "pytest",
     "ruff",
-    "setuptools",
-    "setuptools-scm",
     "sphinx",
     "sphinx-rtd-theme",
     "types-PyYAML",
@@ -45,9 +43,6 @@ exclude = ["docs*", "tests*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.csv"]
-
-[tool.setuptools_scm]
-write_to = "oresat_configs/_version.py"
 
 [tool.ruff]
 line-length = 100

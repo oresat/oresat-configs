@@ -7,6 +7,7 @@ Seperate from __init__.py to avoid cirular imports.
 from dataclasses import InitVar, dataclass, field
 from enum import Enum, unique
 from importlib import abc, resources
+from importlib.metadata import PackageNotFoundError, version
 from types import ModuleType
 from typing import Self
 
@@ -19,8 +20,8 @@ __all__ = [
 ]
 
 try:
-    from ._version import version as __version__
-except ImportError:
+    __version__ = version("oresat-configs")
+except PackageNotFoundError:
     __version__ = "0.0.0"  # package is not installed
 
 
