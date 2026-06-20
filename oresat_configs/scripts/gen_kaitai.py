@@ -65,7 +65,6 @@ CANOPEN_TO_KAITAI_DT = {
 
 def generate_kaitai(config: OreSatConfig) -> dict[str, Any]:
     """Write beacon configs to a kaitai file."""
-
     # Grab and format mission name
     filename = config.mission.filename()
 

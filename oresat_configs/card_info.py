@@ -1,4 +1,4 @@
-"""Utilities for top level cards definitions, not in the OD"""
+"""Utilities for top level cards definitions, not in the OD."""
 
 import csv
 from dataclasses import InitVar, dataclass, field, fields
@@ -61,8 +61,7 @@ class Card:
 
 
 def cards_from_csv(path: Path) -> dict[str, Card]:
-    """Turns cards.csv into a dict of names->Cards, filtered by the current mission"""
-
+    """Turn cards.csv into a dict of names->Cards, filtered by the current mission."""
     with path.open() as f:
         reader = csv.DictReader(f)
         cols = set(reader.fieldnames) if reader.fieldnames else set()

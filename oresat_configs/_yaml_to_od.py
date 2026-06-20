@@ -17,8 +17,7 @@ STD_OBJS_FILE_NAME = resources.files("oresat_configs") / "standard_objects.yaml"
 
 
 def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None:
-    """deal with overlays"""
-
+    """Deal with overlays."""
     # overlay object
     for obj in overlay_config.objects:
         overlayed = False
@@ -86,7 +85,6 @@ def _load_configs(
     overlays: dict[str, abc.Traversable],
 ) -> dict[str, CardConfig]:
     """Generate all ODs for a OreSat mission."""
-
     standard_objects = {}
     with resources.as_file(STD_OBJS_FILE_NAME) as path, path.open() as f:
         for raw in load(f, Loader=CLoader):
@@ -267,7 +265,6 @@ def _gen_od_db(
 
 def _gen_c3_fram_defs(c3_od: ObjectDictionary, config: CardConfig) -> list[ODVariable]:
     """Get the list of objects in saved to fram."""
-
     fram_objs = []
 
     for fields in config.fram:
@@ -286,7 +283,6 @@ def _gen_c3_fram_defs(c3_od: ObjectDictionary, config: CardConfig) -> list[ODVar
 
 def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> list[ODVariable]:
     """Get the list of objects in the beacon from OD."""
-
     beacon_objs = []
 
     for fields in beacon_def.fields:
@@ -305,7 +301,6 @@ def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> li
 
 def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
     """Generate all ODs for a OreSat mission."""
-
     od = ObjectDictionary()
     od.bitrate = 1_000_000  # bps
     od.node_id = 0x7C

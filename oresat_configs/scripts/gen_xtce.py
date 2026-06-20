@@ -79,8 +79,7 @@ DT_LEN = {
 
 
 def make_obj_name(obj: canopen.objectdictionary.Variable) -> str:
-    """get obj name."""
-
+    """Get obj name."""
     name = ""
     if obj.index < 0x5000:
         name += "c3_"
@@ -98,7 +97,6 @@ def make_obj_name(obj: canopen.objectdictionary.Variable) -> str:
 
 def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
     """Make xtce data type name."""
-
     assert obj.data_type is not None
     type_name = CANOPEN_TO_XTCE_DT[obj.data_type]
     if obj.name in ["unix_time", "updater_status"]:
@@ -125,7 +123,6 @@ def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
 
 def generate_xtce(config: OreSatConfig) -> ET.ElementTree:
     """Write beacon configs to a xtce file."""
-
     root = ET.Element(
         "SpaceSystem",
         attrib={

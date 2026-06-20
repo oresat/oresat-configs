@@ -41,7 +41,7 @@ def build_arguments(subparsers: _SubParsersAction) -> None:
     )
 
 
-def format_default(value: float | bytes | str | None) -> str:
+def _format_default(value: float | bytes | str | None) -> str:
     """Format default value based off of python data type."""
     if isinstance(value, int) and not isinstance(value, bool):
         return hex(value)
@@ -50,7 +50,7 @@ def format_default(value: float | bytes | str | None) -> str:
     return str(value)
 
 
-def print_attributes(entry: ODVariable) -> None:
+def _print_attributes(entry: ODVariable) -> None:
     print(f"    unit: {entry.unit}")
     print(f"    factor: {entry.factor}")
     print(f"    min: {entry.min}")
@@ -68,7 +68,7 @@ def print_attributes(entry: ODVariable) -> None:
     print(f"    pdo_mappable: {entry.pdo_mappable}")
 
 
-def print_device_info(dev: DeviceInformation) -> None:
+def _print_device_info(dev: DeviceInformation) -> None:
     print(f"    allowed baudrates:          {dev.allowed_baudrates}")
     print(f"    vendor name:                {dev.vendor_name}")
     print(f"    vendor number:              {dev.vendor_number}")
@@ -87,7 +87,7 @@ def print_device_info(dev: DeviceInformation) -> None:
 
 
 def print_od(args: Namespace) -> None:
-    """The print-od main"""
+    """Print a requested object dictionary."""
     config = OreSatConfig(args.oresat)
 
     inverted_od_data_types = {dt.od_type: name for name, dt in DATA_TYPE_DEFAULTS.items()}
@@ -100,23 +100,23 @@ def print_od(args: Namespace) -> None:
         print(arg_card)
         print('bitrate:', od.bitrate)
         print('node id:', od.node_id)
-        print_device_info(od.device_information)
+        _print_device_info(od.device_information)
 
     for i, entry in od.items():
         if isinstance(entry, ODVariable):
             assert entry.data_type is not None
             data_type = inverted_od_data_types[entry.data_type]
-            value = format_default(entry.default)
+            value = _format_default(entry.default)
             print(f"0x{i:04X}: {entry.name} - {data_type} - {value} - {entry.description}")
             if args.verbose:
-                print_attributes(entry)
+                _print_attributes(entry)
 
         else:
             print(f"0x{i:04X}: {entry.name}: {entry.description}")
             for j, subentry in entry.items():
                 data_type = inverted_od_data_types[subentry.data_type]
-                value = format_default(subentry.default)
+                value = _format_default(subentry.default)
                 descr = f"{data_type} - {value} - {subentry.description}"
                 print(f"  0x{i:04X} 0x{j:02X}: {subentry.name} - {descr}")
                 if args.verbose:
-                    print_attributes(subentry)
+                    _print_attributes(subentry)

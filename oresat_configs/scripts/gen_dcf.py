@@ -45,14 +45,13 @@ def build_arguments(subparsers: _SubParsersAction) -> None:
 
 
 def generate_dcf(od: canopen.ObjectDictionary) -> tuple[str, list[str]]:
-    """Save an od/dcf file
+    """Save an od/dcf file.
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
     """
-
     lines = []
     dev_info = od.device_information
     assert dev_info.product_name is not None

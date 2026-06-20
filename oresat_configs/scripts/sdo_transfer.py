@@ -1,5 +1,5 @@
 """
-SDO transfer script
+SDO transfer script.
 
 This scipt act as CANopen master node, allowing it to read and write other
 node's Object Dictionaries.

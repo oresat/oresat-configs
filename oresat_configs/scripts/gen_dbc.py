@@ -151,7 +151,6 @@ def build_arguments(subparsers: _SubParsersAction) -> None:
 
 def generate_dbc(config: OreSatConfig) -> list[str]:
     """Generate CAN message/signal definitions for a dbc file."""
-
     lines: list[str] = [
         f'VERSION "{__version__}"',
         "",

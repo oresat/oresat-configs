@@ -1,4 +1,4 @@
-"""Generate a OreSat card's CANopenNode OD.[c/h] files"""
+"""Generate an OreSat card's CANopenNode OD.[c/h] files."""
 
 from argparse import Namespace, _SubParsersAction
 from collections.abc import Iterable
@@ -60,6 +60,16 @@ def build_arguments(subparsers: _SubParsersAction) -> None:
 
 
 def indent(*lines: Iterable[str] | Iterable[Iterable[str]]) -> list[str]:
+    """Indent strings by four spaces.
+
+    This can work on a single string: indent("foo")
+    Or a series of strings: indent("foo", "bar", "baz")
+    Or a generator: indent(s.lower() for s in strings)
+
+    Returns
+    -------
+    Flattened list of strings, indented
+    """
     indented = []
     for line in lines:
         if isinstance(line, str):
@@ -106,14 +116,13 @@ DATA_TYPE_C_SIZE = {
 
 
 def generate_canopennode(od: canopen.ObjectDictionary) -> tuple[list[str], list[str]]:
-    """Create the text of CANopenNode OD.[c/h] files from the od
+    """Create the text of CANopenNode OD.[c/h] files from the od.
 
     Parameters
     ----------
     od:
         OD data structure to save as file
     """
-
     # remove node id from emcy cob id
     if 0x1014 in od:
         emcy = od[0x1014]
@@ -151,8 +160,7 @@ def generate_canopennode(od: canopen.ObjectDictionary) -> tuple[list[str], list[
 
 
 def initializer(obj: ODVariable) -> str:
-    """Generates a default value initializer for a given ODVariable"""
-
+    """Generate a default value initializer for a given ODVariable."""
     if obj.data_type == canopen.objectdictionary.datatypes.VISIBLE_STRING:
         return "{" + ", ".join(f"'{c}'" for c in chain(cast(str, obj.default), ["\\0"])) + "}"
     if obj.data_type == canopen.objectdictionary.datatypes.OCTET_STRING:
@@ -169,8 +177,7 @@ def initializer(obj: ODVariable) -> str:
 
 
 def attr_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
-    """Generate attr lines for OD.c for a specific index"""
-
+    """Generate attr lines for OD.c for a specific index."""
     if obj.index in _SKIP_INDEXES:
         return []
 
@@ -204,8 +211,7 @@ def attr_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
 
 
 def _var_data_type_len(var: ODVariable) -> int:
-    """Get the length of the variable's data in bytes"""
-
+    """Get the length of the variable's data in bytes."""
     if var.data_type in (VISIBLE_STRING, OCTET_STRING):
         return len(cast(str, var.default))  # char
     if var.data_type == UNICODE_STRING:
@@ -217,8 +223,7 @@ def _var_data_type_len(var: ODVariable) -> int:
 
 
 def _var_attr_flags(var: ODVariable) -> str:
-    """Generate the variable attribute flags str"""
-
+    """Generate the variable attribute flags str."""
     attrs = []
 
     if var.access_type in ["ro", "const"]:
@@ -244,8 +249,7 @@ def _var_attr_flags(var: ODVariable) -> str:
 
 
 def data_orig(index: int, obj: ODVariable, name: str, arr: str = "") -> str:
-    """Generates the dataOrig field for an OD_obj_*_t"""
-
+    """Generate the dataOrig field for an OD_obj_*_t."""
     if index in _SKIP_INDEXES or obj.data_type == DOMAIN:
         return "NULL,"
     if obj.data_type in (VISIBLE_STRING, OCTET_STRING, UNICODE_STRING):
@@ -254,8 +258,7 @@ def data_orig(index: int, obj: ODVariable, name: str, arr: str = "") -> str:
 
 
 def obj_entry_body(index: int, obj: ODVariable | ODRecord | ODArray) -> list[str]:
-    """Generates the body of an OD_obj_*_t entry"""
-
+    """Generate the body of an OD_obj_*_t entry."""
     if isinstance(obj, ODVariable):
         return [
             ".dataOrig = " + data_orig(index, obj, obj.name),
@@ -302,8 +305,7 @@ def obj_entry_body(index: int, obj: ODVariable | ODRecord | ODArray) -> list[str
 
 
 def obj_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
-    """Generate lines for OD.c for a specific index"""
-
+    """Generate lines for OD.c for a specific index."""
     return [
         f".o_{obj.index:X}_{obj.name} = {{",
         *indent(obj_entry_body(obj.index, obj)),
@@ -333,14 +335,13 @@ def _odlist(obj: ODVariable | ODRecord | ODArray) -> str:
 
 
 def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
-    """Transform an od into a CANopenNode OD.c file
+    """Transform an od into a CANopenNode OD.c file.
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
     """
-
     return [
         "#define OD_DEFINITION",
         '#include "OD.h"',
@@ -376,8 +377,7 @@ def generate_canopennode_c(od: canopen.ObjectDictionary) -> list[str]:
 
 
 def decl_type(obj: ODVariable, name: str) -> list[str]:
-    """Generates a type declaration for an ODVariable"""
-
+    """Generate a type declaration for an ODVariable."""
     ctype = DATA_TYPE_C_TYPES
     if obj.data_type == DOMAIN:
         return []  # skip domains
@@ -392,8 +392,7 @@ def decl_type(obj: ODVariable, name: str) -> list[str]:
 
 
 def _canopennode_h_lines(obj: ODVariable | ODRecord | ODArray) -> list[str]:
-    """Generate struct lines for OD.h for a specific index"""
-
+    """Generate struct lines for OD.h for a specific index."""
     if obj.index in _SKIP_INDEXES:
         return []
 
@@ -511,14 +510,13 @@ def _make_bitfields(obj: ODVariable | ODRecord | ODArray) -> list[str]:
 
 
 def generate_canopennode_h(od: canopen.ObjectDictionary) -> list[str]:
-    """Transform an od into a CANopenNode OD.h file
+    """Transform an od into a CANopenNode OD.h file.
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
     """
-
     return [
         "#ifndef OD_H",
         "#define OD_H",
@@ -586,7 +584,7 @@ def generate_canopennode_h(od: canopen.ObjectDictionary) -> list[str]:
 
 
 def gen_fw_files(args: Namespace) -> None:
-    """generate CANopenNode firmware files main"""
+    """Generate CANopenNode firmware files main."""
     config = OreSatConfig(args.oresat)
 
     if args.dir_path.exists() and not args.dir_path.is_dir():

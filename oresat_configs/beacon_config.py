@@ -82,7 +82,6 @@ class BeaconConfig:
     @classmethod
     def from_yaml(cls, config_path: Path) -> Self:
         """Load a beacon YAML config file."""
-
         with config_path.open() as f:
             config_raw = load(f, Loader=CLoader)
         return from_dict(data_class=cls, data=config_raw)

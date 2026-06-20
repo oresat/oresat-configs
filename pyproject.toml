@@ -77,15 +77,26 @@ ignore = [
 
     # Re-enable soon
     "S101",  # assert - Should be eventually fixed but for now helps with type checking
-    "D",  # pydocstyle - Should be turned back on but documentation is a large task
+    "D101",  # undocumented-public-class
+    "D102",  # undocumented-public-method
+    "D104",  # undocumented-public-package
+    "D105",  # undocumented-magic-method
 ]
 
 [tool.ruff.lint.per-file-ignores]
 # Scripts using print() is fine, it even explicitly mentions this in the docs
 "oresat_configs/scripts/*" = [ "T20" ] # flake8-print
+# Test specific lint ignores. These files are not part of the main library
+"tests/**/{test_*,__init__,conftest}.py" = [
+    "S101",  # assert - pytest prefers plain assert
+    "D", # pydocstyle - Tests don't really need extensive docstrings
+]
 
 [tool.ruff.format]
 quote-style = "preserve"
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.pytest.ini_options]
 addopts = [

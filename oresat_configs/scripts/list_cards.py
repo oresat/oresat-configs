@@ -1,4 +1,4 @@
-"""Prints the known list of oresat cards"""
+"""Prints the known list of oresat cards."""
 
 from argparse import Namespace, RawDescriptionHelpFormatter, _SubParsersAction
 from collections import defaultdict
@@ -62,8 +62,7 @@ def build_arguments(subparsers: _SubParsersAction) -> None:
 
 
 def list_cards(args: Namespace) -> None:
-    """Lists oresat cards and their configurations"""
-
+    """List oresat cards and their configurations."""
     with as_file(Mission.from_string(args.oresat).cards) as path:
         cards = cards_from_csv(path)
     if args.names:

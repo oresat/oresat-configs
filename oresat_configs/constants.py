@@ -1,5 +1,5 @@
 """
-OreSat OD constants
+OreSat OD constants.
 
 Seperate from __init__.py to avoid cirular imports.
 """
@@ -27,7 +27,7 @@ except PackageNotFoundError:
 
 @dataclass(frozen=True)
 class MissionConsts:
-    """A specific set of constants associated with an OreSat Mission"""
+    """A specific set of constants associated with an OreSat Mission."""
 
     id: int
     arg: str
@@ -48,7 +48,7 @@ class MissionConsts:
 
 @unique
 class Mission(MissionConsts, Enum):
-    """Each OreSat Mission and constant configuration data associated with them"""
+    """Each OreSat Mission and constant configuration data associated with them."""
 
     ORESAT0 = 1, "0", oresat0
     ORESAT0_5 = 2, "0.5", oresat0_5
@@ -58,7 +58,7 @@ class Mission(MissionConsts, Enum):
         return "OreSat" + self.arg
 
     def filename(self) -> str:
-        """Returns a string safe to use in filenames and other restricted settings.
+        """Return a string safe to use in filenames and other restricted settings.
 
         All lower case, dots replaced with underscores.
         """
@@ -66,15 +66,15 @@ class Mission(MissionConsts, Enum):
 
     @classmethod
     def default(cls) -> Self:
-        """Returns the currently active mission"""
+        """Return the currently active Mission."""
         return cls.ORESAT1
 
     @classmethod
     def from_string(cls, val: str) -> Self:
-        """Fetches the Mission associated with an appropriate string
+        """Fetch the Mission associated with an appropriate string.
 
         Appropriate strings are the arg (0, 0.5, ...), optionally prefixed with
-        OreSat or oresat
+        OreSat or oresat.
         """
         arg = val.lower().removeprefix("oresat")
         for m in cls:
@@ -84,7 +84,7 @@ class Mission(MissionConsts, Enum):
 
     @classmethod
     def from_id(cls, val: int) -> Self:
-        """Fetches the Mission associated with an appropriate ID
+        """Fetch the Mission associated with an appropriate ID.
 
         Appropriate IDs are integers 1, 2, ... that corespond to the specific
         mission. Note that these are not the number in the Satellite name.
