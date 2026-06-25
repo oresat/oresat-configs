@@ -1,7 +1,7 @@
 """Load a beacon config file."""
 
 from dataclasses import dataclass, field
-from pathlib import Path
+from importlib.abc import Traversable
 from typing import Self
 
 from dacite import from_dict
@@ -80,7 +80,7 @@ class BeaconConfig:
     """
 
     @classmethod
-    def from_yaml(cls, config_path: Path) -> Self:
+    def from_yaml(cls, config_path: Traversable) -> Self:
         """Load a beacon YAML config file."""
         with config_path.open() as f:
             config_raw = load(f, Loader=CLoader)

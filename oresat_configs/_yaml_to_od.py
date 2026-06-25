@@ -2,18 +2,15 @@
 
 import dataclasses
 from copy import deepcopy
-from importlib import abc, resources
+from typing import Literal
 
 from canopen.objectdictionary import ObjectDictionary, ODArray, ODRecord, ODVariable
 from yaml import CLoader, load
 
-from . import base
 from .beacon_config import BeaconConfig
 from .card_config import CardConfig, IndexObject, Rpdo, SubindexObject
 from .card_info import Card
 from .constants import Mission, __version__
-
-STD_OBJS_FILE_NAME = resources.files("oresat_configs") / "standard_objects.yaml"
 
 
 def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None:
@@ -81,41 +78,38 @@ def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None
 
 
 def _load_configs(
+    mission: Mission,
     cards: dict[str, Card],
-    overlays: dict[str, abc.Traversable],
 ) -> dict[str, CardConfig]:
     """Generate all ODs for a OreSat mission."""
     standard_objects = {}
-    with resources.as_file(STD_OBJS_FILE_NAME) as path, path.open() as f:
+    with mission.standard.open() as f:
         for raw in load(f, Loader=CLoader):
             obj = IndexObject.from_dict(raw)
             standard_objects[obj.name] = obj
 
-    common_configs: dict[abc.Traversable | None, CardConfig] = {None: CardConfig()}
-    for file in {card.common for card in cards.values() if card.common is not None}:
-        with resources.as_file(file) as path:
-            common_configs[file] = CardConfig.from_yaml(path)
+    common_configs: dict[str | None, CardConfig] = {None: CardConfig()}
+    for style, file in mission.common.items():
+        common_configs[style] = CardConfig.from_yaml(file)
 
     node_ids = {name: card.node_id for name, card in cards.items()}
 
     configs: dict[str, CardConfig] = {}
     for name, card in cards.items():
-        if card.config is None:  # some cards are OPD only
+        if card.basetype is None:  # some cards are OPD only
             continue
 
-        with resources.as_file(card.config) as path:
-            conf = CardConfig.from_yaml(path)
+        conf = CardConfig.from_yaml(mission.configs[card.basename])
 
-        common = common_configs[card.common]
+        common = common_configs[card.basetype]
         conf.std_objects = list(set(common.std_objects + conf.std_objects))
         conf.objects.extend(common.objects)
         if name != "c3":
             conf.tpdos.extend(common.tpdos)
             conf.rpdos.extend(common.rpdos)
 
-        if card.base in overlays:
-            with resources.as_file(overlays[card.base]) as path:
-                overlay_config = CardConfig.from_yaml(path)
+        if card.basename in mission.overlays:
+            overlay_config = CardConfig.from_yaml(mission.overlays[card.basename])
             overlay_configs(conf, overlay_config)
 
         for std in conf.std_objects:
@@ -320,8 +314,7 @@ def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
     od.device_information.nr_of_TXPDO = 0  # type: ignore[assignment]
     od.device_information.LSS_supported = False
 
-    with resources.as_file(resources.files(base) / "fw_common.yaml") as path:
-        config = CardConfig.from_yaml(path)
+    config = CardConfig.from_yaml(mission.common['fw'])
 
     # add card objects
     for obj in config.objects:
@@ -331,7 +324,7 @@ def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
         od.add_object(obj.to_entry())
 
     # add any standard objects
-    with resources.as_file(STD_OBJS_FILE_NAME) as path, path.open() as f:
+    with mission.standard.open() as f:
         for raw in load(f, Loader=CLoader):
             if raw['name'] in config.std_objects:
                 obj = IndexObject.from_dict(raw)

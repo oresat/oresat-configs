@@ -48,6 +48,9 @@ exclude = ["docs*", "tests*"]
 [tool.ruff]
 line-length = 100
 
+[tool.ruff.format]
+quote-style = "preserve"
+
 [tool.ruff.lint]
 select = [ "ALL" ]
 ignore = [
@@ -91,9 +94,6 @@ ignore = [
     "S101",  # assert - pytest prefers plain assert
     "D", # pydocstyle - Tests don't really need extensive docstrings
 ]
-
-[tool.ruff.format]
-quote-style = "preserve"
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

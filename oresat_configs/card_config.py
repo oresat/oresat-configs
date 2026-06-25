@@ -2,8 +2,8 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from importlib.abc import Traversable
 from itertools import chain
-from pathlib import Path
 from typing import Literal, NamedTuple, Self, cast
 
 from canopen.objectdictionary import (
@@ -607,7 +607,7 @@ class CardConfig:
         raise ValueError(f'tpdo field {field} not found in config.objects')
 
     @classmethod
-    def from_yaml(cls, config_path: Path) -> Self:
+    def from_yaml(cls, config_path: Traversable) -> Self:
         """Load a card YAML config file."""
         with config_path.open() as f:
             config_raw = load(f, Loader=CLoader)

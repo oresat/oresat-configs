@@ -9,8 +9,6 @@ import yaml
 if not hasattr(yaml, "CLoader"):
     raise ImportError("pyyaml installed without libyaml bindings. See oresat-configs README.md")
 
-from importlib.resources import as_file
-
 from ._yaml_to_od import (
     _gen_c3_beacon_defs,
     _gen_c3_fram_defs,
@@ -47,11 +45,9 @@ class OreSatConfig:
         else:
             raise TypeError(f"Unsupported mission type: '{type(mission)}'")
 
-        with as_file(self.mission.beacon) as path:
-            beacon_config = BeaconConfig.from_yaml(path)
-        with as_file(self.mission.cards) as path:
-            self.cards = cards_from_csv(path)
-        self.configs = _load_configs(self.cards, self.mission.overlays)
+        beacon_config = BeaconConfig.from_yaml(self.mission.beacon)
+        self.cards = cards_from_csv(self.mission.cards)
+        self.configs = _load_configs(self.mission, self.cards)
         self.od_db = _gen_od_db(self.mission, self.cards, beacon_config, self.configs)
         c3_od = self.od_db["c3"]
         self.beacon_def = _gen_c3_beacon_defs(c3_od, beacon_config)

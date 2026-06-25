@@ -6,12 +6,13 @@ Seperate from __init__.py to avoid cirular imports.
 
 from dataclasses import InitVar, dataclass, field
 from enum import Enum, unique
-from importlib import abc, resources
+from importlib import resources
+from importlib.abc import Traversable
 from importlib.metadata import PackageNotFoundError, version
 from types import ModuleType
 from typing import Self
 
-from . import oresat0, oresat0_5, oresat1
+from . import base, oresat0, oresat0_5, oresat1
 
 __all__ = [
     "Mission",
@@ -32,18 +33,31 @@ class MissionConsts:
     id: int
     arg: str
     paths: InitVar[ModuleType]
-    cards: abc.Traversable = field(init=False)
-    beacon: abc.Traversable = field(init=False)
-    overlays: dict[str, abc.Traversable] = field(default_factory=dict, init=False)
+    cards: Traversable = field(init=False)
+    beacon: Traversable = field(init=False)
+    standard: Traversable = field(init=False)
+    common: dict[str, Traversable] = field(default_factory=dict, init=False)
+    configs: dict[str, Traversable] = field(default_factory=dict, init=False)
+    overlays: dict[str, Traversable] = field(default_factory=dict, init=False)
 
     def __post_init__(self, paths: ModuleType) -> None:
-        base = resources.files(paths)
-        object.__setattr__(self, "cards", base / "cards.csv")
-        object.__setattr__(self, "beacon", base / "beacon.yaml")
-        for path in base.iterdir():
+        mission = resources.files(paths)
+        object.__setattr__(self, "cards", mission / "cards.csv")
+        object.__setattr__(self, "beacon", mission / "beacon.yaml")
+        for path in mission.iterdir():
             if path.name.endswith("_overlay.yaml"):
-                card = path.name.rsplit(sep="_", maxsplit=1)[0]
+                card = path.name.removesuffix("_overlay.yaml")
                 self.overlays[card] = path
+
+        yaml = resources.files(base)
+        for path in yaml.iterdir():
+            if path.name == "standard_objects.yaml":
+                object.__setattr__(self, "standard", yaml / "standard_objects.yaml")
+            elif path.name.endswith("_common.yaml"):
+                common = path.name.removesuffix("_common.yaml")
+                self.common[common] = path
+            elif path.name.endswith(".yaml"):
+                self.configs[path.name.removesuffix(".yaml")] = path
 
 
 @unique

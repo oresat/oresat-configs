@@ -1,12 +1,12 @@
 """Unit tests for ensuring yaml config files match up with corresponding dataclasses"""
 
-from importlib import abc, resources
+from importlib import abc
 from typing import TypeAlias
 
 from dacite import Config, from_dict
 from yaml import CLoader, load
 
-from oresat_configs import Mission, _yaml_to_od, base
+from oresat_configs import Mission
 from oresat_configs.beacon_config import BeaconConfig
 from oresat_configs.card_config import CardConfig, IndexObject
 
@@ -39,14 +39,13 @@ class TestConfigTypes:
 
     def test_card_config(self, mission: Mission) -> None:
         """Tests all the card configs, with dataclass CardConfig"""
-        card_paths = [f for f in resources.files(base).iterdir() if f.name.endswith(".yaml")]
+        card_paths = list(mission.configs.values())
         card_paths.extend(mission.overlays.values())
         for path in card_paths:
             from_dict(CardConfig, self.load_yaml(path), Config(strict=True))
 
-    def test_standard_types(self) -> None:
+    def test_standard_types(self, mission: Mission) -> None:
         """Tests the standard objects config. Each entry gets its own IndexObject"""
-        path = _yaml_to_od.STD_OBJS_FILE_NAME
-        for data in self.load_yaml(path):
+        for data in self.load_yaml(mission.standard):
             assert isinstance(data, dict)
             from_dict(IndexObject, data, Config(strict=True))

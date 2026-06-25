@@ -1,18 +1,17 @@
 """Utilities for top level cards definitions, not in the OD."""
 
 import csv
-from dataclasses import InitVar, dataclass, field, fields
-from importlib import abc, resources
-from pathlib import Path
-
-from . import base
+from dataclasses import dataclass, fields
+from importlib.abc import Traversable
+from typing import Literal
 
 
-@dataclass
+@dataclass(frozen=True)
 class Card:
     """Card info."""
 
-    name: InitVar[str]
+    name: str
+    """The standard name of the card"""
     nice_name: str
     """A nice name for the card."""
     node_id: int
@@ -25,48 +24,49 @@ class Card:
     """Keep the card on all the time. Only for battery cards."""
     child: str = ""
     """Optional child node name. Useful for CFC cards."""
-    base: str = field(init=False)
-    """Base type of card; e.g. "battery", "solar", ..."""
-    common: abc.Traversable | None = field(init=False)
-    """Path to the card's common (sw or fw) config"""
-    config: abc.Traversable | None = field(init=False)
-    """Path to the card specific config"""
 
-    def __post_init__(self, name: str) -> None:
-        if name in ("cfc_processor", "cfc_sensor"):
-            basename = "cfc"
-        elif name.startswith("rw"):
-            basename = "reaction_wheel"
-        elif name[-1].isdigit():
-            basename = name.rsplit(sep="_", maxsplit=1)[0]
-        else:
-            basename = name
+    @property
+    def basename(self) -> str:
+        """Base name of card; e.g. "battery", "solar", ..."""
+        match self.name:
+            case "cfc_processor" | "cfc_sensor":
+                return "cfc"
+            case x if x.startswith("rw"):
+                return "reaction_wheel"
+            case x if x[-1].isdigit():
+                return x.rsplit(sep="_", maxsplit=1)[0]
+            case x:
+                return x
 
-        basedir = resources.files(base)
+    @property
+    def basetype(self) -> Literal['sw', 'fw'] | None:
+        """Type of software on the card.
 
-        if self.processor == "none":
-            common = None
-        elif self.processor == "octavo":
-            common = basedir / "sw_common.yaml"
-        elif self.processor in ("stm32", "mcxn"):
-            common = basedir / "fw_common.yaml"
-        else:
-            raise ValueError(f"Invalid processor {self.processor}")
+        Determines the common interface presented by CANopen.
 
-        config = None if self.processor == "none" else basedir / (basename + ".yaml")
+        Returns
+        -------
+        fw if it's an embedded card (ChibiOS/Zephyr).
+        sw if it's a linux card.
+        None if there is no processor on this card.
+        """
+        match self.processor:
+            case "none":
+                return None
+            case "octavo":
+                return "sw"
+            case "stm32" | "mcxn":
+                return "fw"
+            case _:
+                raise ValueError(f"Invalid processor {self.processor}")
 
-        object.__setattr__(self, "base", basename)
-        object.__setattr__(self, "common", common)
-        object.__setattr__(self, "config", config)
 
-
-def cards_from_csv(path: Path) -> dict[str, Card]:
+def cards_from_csv(path: Traversable) -> dict[str, Card]:
     """Turn cards.csv into a dict of names->Cards, filtered by the current mission."""
     with path.open() as f:
         reader = csv.DictReader(f)
         cols = set(reader.fieldnames) if reader.fieldnames else set()
         expect = {f.name for f in fields(Card) if f.init}
-        expect.add("name")  # the 'name' column is the keys of the returned dict; not in Card
         if cols - expect:
             raise TypeError(f"{path} has excess columns: {cols - expect}. Update class Card?")
         if expect - cols:

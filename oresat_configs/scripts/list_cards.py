@@ -3,7 +3,6 @@
 from argparse import Namespace, RawDescriptionHelpFormatter, _SubParsersAction
 from collections import defaultdict
 from dataclasses import asdict, fields
-from importlib.resources import as_file
 
 from tabulate import tabulate
 
@@ -63,8 +62,7 @@ def build_arguments(subparsers: _SubParsersAction) -> None:
 
 def list_cards(args: Namespace) -> None:
     """List oresat cards and their configurations."""
-    with as_file(Mission.from_string(args.oresat).cards) as path:
-        cards = cards_from_csv(path)
+    cards = cards_from_csv(Mission.from_string(args.oresat).cards)
     if args.names:
         _print_names(cards)
     else:
