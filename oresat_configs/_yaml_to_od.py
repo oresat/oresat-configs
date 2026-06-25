@@ -82,24 +82,25 @@ def _load_configs(
     cards: dict[str, Card],
 ) -> dict[str, CardConfig]:
     """Generate all ODs for a OreSat mission."""
+    node_ids = {name: card.node_id for name, card in cards.items()}
+
     standard_objects = {}
     with mission.standard.open() as f:
         for raw in load(f, Loader=CLoader):
-            obj = IndexObject.from_dict(raw)
+            obj = IndexObject.from_dict(raw, node_ids)
             standard_objects[obj.name] = obj
 
     common_configs: dict[str | None, CardConfig] = {None: CardConfig()}
     for style, file in mission.common.items():
-        common_configs[style] = CardConfig.from_yaml(file)
+        common_configs[style] = CardConfig.from_yaml(file, node_ids)
 
-    node_ids = {name: card.node_id for name, card in cards.items()}
 
     configs: dict[str, CardConfig] = {}
     for name, card in cards.items():
         if card.basetype is None:  # some cards are OPD only
             continue
 
-        conf = CardConfig.from_yaml(mission.configs[card.basename])
+        conf = CardConfig.from_yaml(mission.configs[card.basename], node_ids)
 
         common = common_configs[card.basetype]
         conf.std_objects = list(set(common.std_objects + conf.std_objects))
@@ -109,7 +110,7 @@ def _load_configs(
             conf.rpdos.extend(common.rpdos)
 
         if card.basename in mission.overlays:
-            overlay_config = CardConfig.from_yaml(mission.overlays[card.basename])
+            overlay_config = CardConfig.from_yaml(mission.overlays[card.basename], node_ids)
             overlay_configs(conf, overlay_config)
 
         for std in conf.std_objects:
@@ -118,8 +119,6 @@ def _load_configs(
                 obj = dataclasses.replace(obj, default=0x80 + card.node_id)
             conf.objects.append(obj)
 
-        for obj in conf.objects:
-            obj.expand_subindexes(node_ids)
 
         configs[name] = conf
 
@@ -129,19 +128,14 @@ def _load_configs(
         if name == 'c3':
             continue
 
-        mapped_card = IndexObject(
-            name=name,
-            description=f'{name} tpdo mapped data',
-            index=0x5000 + node_ids[name],
-            object_type='record',
-        )
+        subindexes: list[SubindexObject] = []
         # sorted ostensibly doesn't matter but it keeps the OD generation the same as past versions
         for tpdo in sorted(conf.tpdos, key=lambda x: x.num):
             rpdo = Rpdo(len(c3.rpdos) + 1, name, tpdo.num)
             for field in tpdo.fields:
                 rpdo.fields.append([name, '_'.join(field)])
                 entry = conf.find_object(field)
-                mapped_card.subindexes.append(
+                subindexes.append(
                     SubindexObject(
                         name='_'.join(field),
                         data_type=entry.data_type,
@@ -155,11 +149,18 @@ def _load_configs(
                         scale_factor=entry.scale_factor,
                         low_limit=entry.low_limit,
                         high_limit=entry.high_limit,
-                        subindex=len(mapped_card.subindexes) + 1,
+                        subindex=len(subindexes) + 1,
                     )
                 )
             c3.rpdos.append(rpdo)
-        c3.objects.append(mapped_card)
+
+        c3.objects.append(IndexObject(
+            name=name,
+            description=f'{name} tpdo mapped data',
+            index=0x5000 + node_ids[name],
+            object_type='record',
+            subindexes=subindexes
+        ))
 
     return configs
 
@@ -314,23 +315,21 @@ def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
     od.device_information.nr_of_TXPDO = 0  # type: ignore[assignment]
     od.device_information.LSS_supported = False
 
-    config = CardConfig.from_yaml(mission.common['fw'])
+    config = CardConfig.from_yaml(mission.common['fw'], {})
 
     # add card objects
     for obj in config.objects:
         if obj.index in od.indices:
             raise ValueError(f"index 0x{obj.index:X} already in OD")
-        obj.expand_subindexes({})
         od.add_object(obj.to_entry())
 
     # add any standard objects
     with mission.standard.open() as f:
         for raw in load(f, Loader=CLoader):
             if raw['name'] in config.std_objects:
-                obj = IndexObject.from_dict(raw)
+                obj = IndexObject.from_dict(raw, {})
                 if obj.name == "cob_id_emergency_message":
                     obj = dataclasses.replace(obj, default=0x80 + od.node_id)
-                obj.expand_subindexes({})
                 od.add_object(obj.to_entry())
 
     # add TPDSs

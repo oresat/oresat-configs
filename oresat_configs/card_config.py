@@ -391,42 +391,50 @@ class IndexObject(ConfigObject):
     """Object type; must be ``"variable"``, ``"array"``, or ``"record"``."""
     subindexes: list[SubindexObject] = field(default_factory=list)
     """Defines subindexes for records and arrays."""
-    generate_subindexes: GenerateSubindex | None = None
+    generate_subindexes: InitVar[GenerateSubindex | None] = None
     """Used to generate subindexes for arrays."""
+    _node_ids: InitVar[dict[str, int] | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self, generate_subindexes: GenerateSubindex | None, _node_ids: dict[str, int] | None
+    ) -> None:
         super().__post_init__()
-        if self.generate_subindexes is not None and self.subindexes:
-            raise ValueError("IndexObject {self.index} has both subindexes and generate_subindexes")
-        if self.object_type == 'variable' and (self.subindexes or self.generate_subindexes):
-            raise ValueError("IndexObject {self.index} of type variable must not have subindexes")
+        match self.object_type:
+            case 'variable':
+                if self.subindexes or generate_subindexes:
+                    raise ValueError(
+                        f"IndexObject variable {self.index:04x} must not have subindexes"
+                    )
+            case 'array':
+                if not self.subindexes and not generate_subindexes:
+                    raise ValueError(f"IndexObject array {self.index:04x} must have subindexes")
+                if self.subindexes and generate_subindexes:
+                    raise ValueError(
+                        f"IndexObject {self.index:04x} has both subindexes and generate_subindexes"
+                    )
+            case 'record':
+                if not self.subindexes:
+                    raise ValueError(f"IndexObject record {self.index:04x} must have subindexes")
+                if generate_subindexes:
+                    raise ValueError(
+                        f"IndexObject record {self.index:04x} must not generate subindexes"
+                    )
+            case _:
+                raise ValueError(
+                    f"IndexObject {self.index:04x} has invalid object_type: '{self.object_type}'"
+                )
 
-    def expand_subindexes(self, node_ids: dict[str, int]) -> None:
-        if self.generate_subindexes is None:
-            return
-        self.subindexes = self.generate_subindexes.to_subindexes(node_ids)
-        self.generate_subindexes = None
+        if generate_subindexes is not None and _node_ids is not None:
+            self.subindexes = generate_subindexes.to_subindexes(_node_ids)
 
     def to_entry(self) -> ODArray | ODRecord | ODVariable:
-        if self.object_type == 'variable':
-            if self.subindexes:
-                raise ValueError("Variable object has subindexes")
-            if self.generate_subindexes:
-                raise ValueError("Variable object has generate_subindexes")
-            return self._to_variable(self.index)
-
-        if self.object_type == 'array':
-            if self.subindexes and self.generate_subindexes:
-                raise ValueError("Array object must have either subindexes or generate_subindexes")
-            if not self.subindexes and not self.generate_subindexes:
-                raise ValueError("Array object must have either subindexes or generate_subindexes")
-            return self._to_array()
-
-        if self.object_type == 'record':
-            if self.generate_subindexes:
-                raise ValueError("Record object must not have generate_subindexes")
-            return self._to_record()
-
+        match self.object_type:
+            case 'variable':
+                return self._to_variable(self.index)
+            case 'array':
+                return self._to_array()
+            case 'record':
+                return self._to_record()
         raise ValueError(f"Invalid object type {self.object_type}")
 
     def _to_array(self) -> ODArray:
@@ -434,8 +442,6 @@ class IndexObject(ConfigObject):
         arr.description = self.description
         for subindex in self.subindexes:
             arr.add_member(subindex.to_entry(self.index))
-        if self.generate_subindexes:
-            raise RuntimeError("generate() must be called first")
         arr.add_member(HighestSubindexSupported(arr))
         return arr
 
@@ -448,7 +454,11 @@ class IndexObject(ConfigObject):
         return rec
 
     @classmethod
-    def from_dict(cls, data: dict[str, float | str]) -> Self:
+    def from_dict(
+        cls, data: dict[str, float | str | dict[str, int]], node_ids: dict[str, int]
+    ) -> Self:
+        if 'generate_subindexes' in data:
+            data['_node_ids'] = node_ids
         return from_dict(data_class=cls, data=data, config=Config(strict=True))
 
 
@@ -607,8 +617,11 @@ class CardConfig:
         raise ValueError(f'tpdo field {field} not found in config.objects')
 
     @classmethod
-    def from_yaml(cls, config_path: Traversable) -> Self:
+    def from_yaml(cls, path: Traversable, node_ids: dict[str, int]) -> Self:
         """Load a card YAML config file."""
-        with config_path.open() as f:
-            config_raw = load(f, Loader=CLoader)
-        return from_dict(data_class=cls, data=config_raw, config=Config(strict=True))
+        with path.open() as f:
+            raw = load(f, Loader=CLoader)
+        for obj in raw["objects"]:
+            if "generate_subindexes" in obj:
+                obj["_node_ids"] = node_ids
+        return from_dict(data_class=cls, data=raw, config=Config(strict=True))

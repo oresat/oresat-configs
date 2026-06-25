@@ -42,10 +42,10 @@ class TestConfigTypes:
         card_paths = list(mission.configs.values())
         card_paths.extend(mission.overlays.values())
         for path in card_paths:
-            from_dict(CardConfig, self.load_yaml(path), Config(strict=True))
+            CardConfig.from_yaml(path, {})
 
     def test_standard_types(self, mission: Mission) -> None:
         """Tests the standard objects config. Each entry gets its own IndexObject"""
         for data in self.load_yaml(mission.standard):
             assert isinstance(data, dict)
-            from_dict(IndexObject, data, Config(strict=True))
+            IndexObject.from_dict(data, {})

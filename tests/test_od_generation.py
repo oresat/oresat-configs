@@ -11,7 +11,7 @@ class TestOdGeneration:
         # For every overlay tpdo, check that it ends up exactly in the final config
         for name, overlay_path in config.mission.overlays.items():
             with resources.as_file(overlay_path) as path:
-                overlay = CardConfig.from_yaml(path)
+                overlay = CardConfig.from_yaml(path, {})
             for cardname, cfg in config.configs.items():
                 if cardname.startswith(name):
                     for tpdo in overlay.tpdos:
@@ -21,7 +21,7 @@ class TestOdGeneration:
         # For every overlay rpdo, check that it ends up exactly in the final config
         for name, overlay_path in config.mission.overlays.items():
             with resources.as_file(overlay_path) as path:
-                overlay = CardConfig.from_yaml(path)
+                overlay = CardConfig.from_yaml(path, {})
             for cardname, cfg in config.configs.items():
                 if cardname.startswith(name):
                     for tpdo in overlay.rpdos:
