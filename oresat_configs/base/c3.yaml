@@ -626,6 +626,7 @@ objects:
           thermal_detumble: 4
           thermal_reorient: 5
           thermal_spinup: 6
+          custom: 7
         default: 0
 
       - subindex: 0x3
