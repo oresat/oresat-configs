@@ -10,7 +10,9 @@ objects:
           'off': 1
           standby: 2
           capture: 3
-          error: 4
+          boot_lockout: 4
+          error: 0xff
+        default: 4
 
       - subindex: 0x2
         name: number_to_capture

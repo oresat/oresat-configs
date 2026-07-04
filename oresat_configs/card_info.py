@@ -1,10 +1,14 @@
 """Utilities for top level cards definitions, not in the OD"""
 
+from __future__ import annotations
+
 import csv
 from dataclasses import InitVar, dataclass, field, fields
 from importlib import abc, resources
-from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from . import base
 
@@ -19,7 +23,7 @@ class Card:
     node_id: int
     """CANopen node id."""
     processor: str
-    """Processor type; e.g.: "octavo", "stm32", or "none"."""
+    """Processor type; e.g.: "octavo", "stm32", "mcxn", or "none"."""
     opd_address: int
     """OPD address."""
     opd_always_on: bool
@@ -28,12 +32,12 @@ class Card:
     """Optional child node name. Useful for CFC cards."""
     base: str = field(init=False)
     """Base type of card; e.g. "battery", "solar", ..."""
-    common: Optional[abc.Traversable] = field(init=False)
+    common: abc.Traversable | None = field(init=False)
     """Path to the card's common (sw or fw) config"""
-    config: Optional[abc.Traversable] = field(init=False)
+    config: abc.Traversable | None = field(init=False)
     """Path to the card specific config"""
 
-    def __post_init__(self, name):
+    def __post_init__(self, name: str) -> None:
         if name in ("cfc_processor", "cfc_sensor"):
             basename = "cfc"
         elif name.startswith("rw"):
@@ -49,15 +53,12 @@ class Card:
             common = None
         elif self.processor == "octavo":
             common = basedir / "sw_common.yaml"
-        elif self.processor == "stm32":
+        elif self.processor in ("stm32", "mcxn"):
             common = basedir / "fw_common.yaml"
         else:
             raise ValueError(f"Invalid processor {self.processor}")
 
-        if self.processor == "none":
-            config = None
-        else:
-            config = basedir / (basename + ".yaml")
+        config = None if self.processor == "none" else basedir / (basename + ".yaml")
 
         object.__setattr__(self, "base", basename)
         object.__setattr__(self, "common", common)
@@ -70,9 +71,8 @@ def cards_from_csv(path: Path) -> dict[str, Card]:
     with path.open() as f:
         reader = csv.DictReader(f)
         cols = set(reader.fieldnames) if reader.fieldnames else set()
-        expect = {f.name for f in fields(Card)}
+        expect = {f.name for f in fields(Card) if f.init}
         expect.add("name")  # the 'name' column is the keys of the returned dict; not in Card
-        expect -= {"base", "common", "config"}  # these fields are derived; not in csv
         if cols - expect:
             raise TypeError(f"{path} has excess columns: {cols - expect}. Update class Card?")
         if expect - cols:

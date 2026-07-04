@@ -1,22 +1,34 @@
 """Tools for working with PDOs"""
 
 import time
-from argparse import ArgumentParser, Namespace
-from typing import Any, Optional
+from argparse import Namespace
+from typing import Any
 
 import canopen
 
 from .. import Mission, OreSatConfig
 
-PDO = "list or receive PDOs from the specified card"
 
+def build_arguments(subparsers: Any) -> None:
+    """Build command line arguments for this script.
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
+    This function will be invoked by scripts.main to configure command line arguments for this
+    subcommand. Use subparsers.add_parser() to get an ArgumentParser. The parser must have the
+    default argument func which is the entry point for this subcommand: parser.set_defaults(func=?)
 
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
+    Parameters
+    ----------
+    subparsers
+        The output of ArgumentParser.add_subparsers() from the primary ArgumentParser. This function
+        should call add_parser() on this parameter to get the ArgumentParser that is used to
+        configure arguments for this subcommand.
+        See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of
+        that section, for more.
     """
-    parser.description = PDO
+    desc = "list or receive PDOs from the specified card"
+    parser = subparsers.add_parser("pdo", description=desc, help=desc)
+    parser.set_defaults(func=pdo_main)
+
     parser.add_argument(
         "--oresat",
         default=Mission.default().arg,
@@ -26,26 +38,15 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
     )
     parser.add_argument("card", help="card name")
     parser.add_argument(
-        "--list", action="store_true", help="list PDOs expected for the particular card"
+        "--list",
+        action="store_true",
+        help="list PDOs expected for the particular card",
     )
     parser.add_argument(
-        "--bus", default="vcan0", help="CAN bus to listen on, defaults to %(default)s"
+        "--bus",
+        default="vcan0",
+        help="CAN bus to listen on, defaults to %(default)s",
     )
-    return parser
-
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("pdo", help=PDO))
-    parser.set_defaults(func=pdo_main)
 
 
 typenames = {
@@ -102,12 +103,12 @@ def print_map(m: canopen.pdo.base.Map) -> None:
     print(f'{m.cob_id:03X} {m.name} {" ".join(data)}')
 
 
-def listen(bus: str, node_id: int, od: canopen.ObjectDictionary) -> None:
+def listen(bus: str, od: canopen.ObjectDictionary) -> None:
     """Listens for PDOs from the given node, formats and prints them to stdout"""
     network = canopen.Network()
     network.connect(channel=bus, bustype="socketcan")
 
-    node = network.add_node(node_id, od)
+    node = network.add_node(0, od)
     node.tpdo.read(from_od=True)
     for pdo in node.tpdo.values():
         pdo.add_callback(print_map)
@@ -121,11 +122,11 @@ def listen(bus: str, node_id: int, od: canopen.ObjectDictionary) -> None:
         network.disconnect()
 
 
-def listpdos(node_id: int, od: canopen.ObjectDictionary) -> None:
+def listpdos(od: canopen.ObjectDictionary) -> None:
     """Prints PDO communication and associated mapping parameters for the given node"""
 
     network = canopen.Network()
-    node = network.add_node(node_id, od)
+    node = network.add_node(0, od)
     node.tpdo.read(from_od=True)
     for index, pdo in node.tpdo.items():
         ttype = transmission_type(pdo.trans_type)
@@ -133,16 +134,13 @@ def listpdos(node_id: int, od: canopen.ObjectDictionary) -> None:
         print(f"PDO {index:2} {pdo.cob_id:03X} ({ttype}) => {names}")
 
 
-def pdo_main(args: Optional[Namespace] = None) -> None:
+def pdo_main(args: Namespace) -> None:
     """The utility for managing PDOs"""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
 
     config = OreSatConfig(args.oresat)
-    node_id = config.cards[args.card].node_id
-    od = config.od_db[args.card]
+    od = config.od_db[config.name_from_alias(args.card)]
 
     if args.list:
-        listpdos(node_id, od)
+        listpdos(od)
     else:
-        listen(args.bus, node_id, od)
+        listen(args.bus, od)

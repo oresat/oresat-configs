@@ -1,24 +1,37 @@
 """Prints the known list of oresat cards"""
 
-from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
+from argparse import Namespace, RawDescriptionHelpFormatter
 from collections import defaultdict
 from dataclasses import asdict, fields
-from typing import Any, Optional
+from importlib.resources import as_file
+from typing import Any
 
 from tabulate import tabulate
 
 from ..card_info import Card, cards_from_csv
 from ..constants import Mission
 
-LIST_CARDS = "list oresat cards, suitable as arguments to other commands"
 
+def build_arguments(subparsers: Any) -> None:
+    """Build command line arguments for this script.
 
-def build_parser(parser: ArgumentParser) -> ArgumentParser:
-    """Configures an ArgumentParser suitable for this script.
+    This function will be invoked by scripts.main to configure command line arguments for this
+    subcommand. Use subparsers.add_parser() to get an ArgumentParser. The parser must have the
+    default argument func which is the entry point for this subcommand: parser.set_defaults(func=?)
 
-    The given parser may be standalone or it may be used as a subcommand in another ArgumentParser.
+    Parameters
+    ----------
+    subparsers
+        The output of ArgumentParser.add_subparsers() from the primary ArgumentParser. This function
+        should call add_parser() on this parameter to get the ArgumentParser that is used to
+        configure arguments for this subcommand.
+        See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of
+        that section, for more.
     """
-    parser.description = LIST_CARDS
+    desc = "list oresat cards, suitable as arguments to other commands"
+    parser = subparsers.add_parser("cards", description=desc, help=desc)
+    parser.set_defaults(func=list_cards)
+
     parser.formatter_class = RawDescriptionHelpFormatter
     parser.add_argument(
         "--oresat",
@@ -27,13 +40,18 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
         type=lambda x: x.lower().removeprefix("oresat"),
         help="Oresat Mission. (Default: %(default)s)",
     )
+    parser.add_argument(
+        "--names",
+        action='store_true',
+        help="Print just the list of card names instead of a full table",
+    )
     # I'd like to pull the descriptions directly out of Card but attribute docstrings are discarded
     # and not accessable at runtime.
     rows = [
         ["name", "The canonical name, suitable for arguments of other scripts"],
         ["nice_name", "A nice name for the card"],
         ["node_id", "CANopen node id"],
-        ["processor", 'Processor type; e.g.: "octavo", "stm32", or "none"'],
+        ["processor", 'Processor type; e.g.: "octavo", "stm32", "mcxn", or "none"'],
         ["opd_address", "OPD address"],
         ["opd_always_on", "Keep the card on all the time. Only for battery cards"],
         ["child", "Optional child node name. Useful for CFC cards."],
@@ -43,37 +61,24 @@ def build_parser(parser: ArgumentParser) -> ArgumentParser:
     if missing:
         parser.epilog += f"\nColums missing description: {missing}"
 
-    return parser
 
-
-def register_subparser(subparsers: Any) -> None:
-    """Registers an ArgumentParser as a subcommand of another parser.
-
-    Intended to be called by __main__.py for each script. Given the output of add_subparsers(),
-    (which I think is a subparser group, but is technically unspecified) this function should
-    create its own ArgumentParser via add_parser(). It must also set_default() the func argument
-    to designate the entry point into this script.
-    See https://docs.python.org/3/library/argparse.html#sub-commands, especially the end of that
-    section, for more.
-    """
-    parser = build_parser(subparsers.add_parser("cards", help=LIST_CARDS))
-    parser.set_defaults(func=list_cards)
-
-
-def list_cards(args: Optional[Namespace] = None) -> None:
+def list_cards(args: Namespace) -> None:
     """Lists oresat cards and their configurations"""
-    if args is None:
-        args = build_parser(ArgumentParser()).parse_args()
 
-    with Mission.from_string(args.oresat).cards as path:
+    with as_file(Mission.from_string(args.oresat).cards) as path:
         cards = cards_from_csv(path)
+    if args.names:
+        _print_names(cards)
+    else:
+        _print_table(cards)
+
+
+def _print_table(cards: dict[str, Card]) -> None:
     data: dict[str, list[str]] = defaultdict(list)
     data["name"] = list(cards)
     for card in cards.values():
         for key, value in asdict(card).items():
-            if key == "node_id":
-                value = f"0x{value:02X}" if value else ""
-            elif key == "opd_address":
+            if key in {"node_id", "opd_address"}:
                 value = f"0x{value:02X}" if value else ""
             elif key == "opd_always_on":
                 value = "True" if value else ""
@@ -81,3 +86,12 @@ def list_cards(args: Optional[Namespace] = None) -> None:
                 continue
             data[key].append(value)
     print(tabulate(data, headers="keys"))
+
+
+def _print_names(cards: dict[str, Card]) -> None:
+    print("base")
+    for name, card in cards.items():
+        # Since this is intended for passing to other comamnds and most of them deal with ODs
+        # this skips cards without ODs. Maybe this is a footgun, we'll find out later.
+        if card.processor != "none":
+            print(name)
