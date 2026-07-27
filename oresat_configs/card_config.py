@@ -34,10 +34,11 @@ from yaml import CLoader, load
 from .odtypes import (
     COBId,
     HighestSubindexSupported,
-    PDOCommunicationParameter,
     PDOMappingParameter,
     PDOSync,
     PDOTimer,
+    RPDOCommunicationParameter,
+    TPDOCommunicationParameter,
 )
 
 DataType = Literal[
@@ -594,9 +595,7 @@ class Tpdo:
             transmission = PDOTimer(self.inhibit_time_ms, self.event_timer_ms)
         else:
             transmission = PDOSync(self.sync, self.sync_start_value)
-        return PDOCommunicationParameter(
-            'tpdo', self.num, COBId.pdo(node_id, self.num), transmission
-        )
+        return TPDOCommunicationParameter(self.num, COBId.pdo(node_id, self.num), transmission)
 
     def overlay(self, other: Self) -> None:
         if self.num != other.num:
@@ -643,7 +642,7 @@ class Rpdo:
 
     def to_communication_parameter(self, node_id: int) -> ODRecord:
         cob_id = COBId.pdo(node_id, self.tpdo_num)
-        return PDOCommunicationParameter('rpdo', self.num, cob_id, PDOTimer(None, None))
+        return RPDOCommunicationParameter(self.num, cob_id, PDOTimer(None, None))
 
     def overlay(self, other: Self) -> None:
         if self.num != other.num:

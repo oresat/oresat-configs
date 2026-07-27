@@ -197,6 +197,16 @@ class PDOCommunicationParameter(ODRecord):
         self.add_member(HighestSubindexSupported(self))
 
 
+class RPDOCommunicationParameter(PDOCommunicationParameter):
+    def __init__(self, num: int, cob_id: int, transmission: PDOSync | PDOTimer) -> None:
+        super().__init__('rpdo', num, cob_id, transmission)
+
+
+class TPDOCommunicationParameter(PDOCommunicationParameter):
+    def __init__(self, num: int, cob_id: int, transmission: PDOSync | PDOTimer) -> None:
+        super().__init__('tpdo', num, cob_id, transmission)
+
+
 class PDOMappedObject(ODVariable):
     """A single PDO Mapping.
 
