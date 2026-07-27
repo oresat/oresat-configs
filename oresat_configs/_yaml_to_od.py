@@ -2,7 +2,6 @@
 
 import dataclasses
 from copy import deepcopy
-from typing import Literal
 
 from canopen.objectdictionary import ObjectDictionary, ODArray, ODRecord, ODVariable
 from yaml import CLoader, load
@@ -28,7 +27,15 @@ def _load_configs(
 
     common_configs: dict[str | None, CardConfig] = {None: CardConfig()}
     for style, file in mission.common.items():
-        common_configs[style] = CardConfig.from_yaml(file, node_ids)
+        common = CardConfig.from_yaml(file, node_ids)
+        # set specific obj defaults
+        common["versions"]["configs_version"].default = __version__
+        obj = common["satellite_id"]
+        obj.default = mission.id
+        for sat in Mission:
+            obj.value_descriptions[sat.name.lower()] = sat.id
+
+        common_configs[style] = common
 
 
     configs: dict[str, CardConfig] = {}
@@ -103,7 +110,6 @@ def _load_configs(
 
 
 def _gen_od_db(
-    mission: Mission,
     cards: dict[str, Card],
     beacon_def: BeaconConfig,
     configs: dict[str, CardConfig],
@@ -153,18 +159,6 @@ def _gen_od_db(
             od.add_object(rpdo.to_mapping_parameter(od))
             od.add_object(rpdo.to_communication_parameter(node_ids[rpdo.card]))
 
-        # set specific obj defaults
-        versions = od["versions"]
-        assert isinstance(versions, ODRecord)
-        # FIXME: canopen is still working out their type annotations, default should be of type
-        #        Union[int, str, bytes, None] but is Optional[int]. Remove ignore when upstream
-        #        fixes it.
-        versions["configs_version"].default = __version__  # type: ignore[assignment]
-        satellite_id = od["satellite_id"]
-        assert isinstance(satellite_id, ODVariable)
-        satellite_id.default = mission.id
-        for sat in Mission:
-            satellite_id.value_descriptions[sat.id] = sat.name.lower()
         if name == "c3":
             beacon = od["beacon"]
             assert isinstance(beacon, ODRecord)
