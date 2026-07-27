@@ -84,6 +84,7 @@ ignore = [
     "D102",  # undocumented-public-method
     "D104",  # undocumented-public-package
     "D105",  # undocumented-magic-method
+    "CPY001", # per-file Copyright notification
 ]
 
 [tool.ruff.lint.per-file-ignores]
