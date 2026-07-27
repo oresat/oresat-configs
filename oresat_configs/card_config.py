@@ -1,7 +1,8 @@
 """Load a card config file."""
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Iterator, Mapping, MutableMapping
+from copy import deepcopy
+from dataclasses import InitVar, dataclass, field, fields
 from importlib.abc import Traversable
 from itertools import chain
 from typing import Literal, NamedTuple, Self, cast
@@ -252,6 +253,15 @@ class ConfigObject:
         # self.storage_location = None
         return var
 
+    def overlay(self, other: Self) -> None:
+        # FIXME: copy dict entries?
+        # ConfigObject explicitly here instead of self so that child classes can figure out what
+        # to do with their fields on their own. Using self would automatically copy them and that's
+        # not always wanted.
+        for f in fields(ConfigObject):
+            if getattr(other, f.name) is not f.default:
+                setattr(self, f.name, getattr(other, f.name))
+
 
 @dataclass
 class SubindexObject(ConfigObject):
@@ -277,6 +287,10 @@ class SubindexObject(ConfigObject):
 
     def to_entry(self, index: int) -> ODVariable:
         return self._to_variable(index, self.subindex)
+
+    def overlay(self, other: Self) -> None:
+        super().overlay(other)
+        # self.subindex shouldn't be overlayed, it wouldn't make sense
 
 
 @dataclass
@@ -369,7 +383,7 @@ class GenerateSubindex(ConfigObject):
 
 
 @dataclass
-class IndexObject(ConfigObject):
+class IndexObject(MutableMapping, ConfigObject):
     """
     Object at index.
 
@@ -389,31 +403,36 @@ class IndexObject(ConfigObject):
     """Index of object, fw/sw common object are in 0x3000, card objects are in 0x4000."""
     object_type: Literal['variable', 'array', 'record'] = "variable"
     """Object type; must be ``"variable"``, ``"array"``, or ``"record"``."""
-    subindexes: list[SubindexObject] = field(default_factory=list)
+    subindexes: InitVar[list[SubindexObject] | None] = None
     """Defines subindexes for records and arrays."""
     generate_subindexes: InitVar[GenerateSubindex | None] = None
     """Used to generate subindexes for arrays."""
     _node_ids: InitVar[dict[str, int] | None] = None
+    _by_name: dict[str, SubindexObject] = field(init=False)
+    _by_subindex: dict[int, SubindexObject] = field(init=False)
 
     def __post_init__(
-        self, generate_subindexes: GenerateSubindex | None, _node_ids: dict[str, int] | None
+        self,
+        subindexes: list[SubindexObject] | None,
+        generate_subindexes: GenerateSubindex | None,
+        _node_ids: dict[str, int] | None,
     ) -> None:
         super().__post_init__()
         match self.object_type:
             case 'variable':
-                if self.subindexes or generate_subindexes:
+                if subindexes or generate_subindexes:
                     raise ValueError(
                         f"IndexObject variable {self.index:04x} must not have subindexes"
                     )
             case 'array':
-                if not self.subindexes and not generate_subindexes:
+                if not subindexes and not generate_subindexes:
                     raise ValueError(f"IndexObject array {self.index:04x} must have subindexes")
-                if self.subindexes and generate_subindexes:
+                if subindexes and generate_subindexes:
                     raise ValueError(
                         f"IndexObject {self.index:04x} has both subindexes and generate_subindexes"
                     )
             case 'record':
-                if not self.subindexes:
+                if not subindexes:
                     raise ValueError(f"IndexObject record {self.index:04x} must have subindexes")
                 if generate_subindexes:
                     raise ValueError(
@@ -425,7 +444,44 @@ class IndexObject(ConfigObject):
                 )
 
         if generate_subindexes is not None and _node_ids is not None:
-            self.subindexes = generate_subindexes.to_subindexes(_node_ids)
+            subindexes = generate_subindexes.to_subindexes(_node_ids)
+        if subindexes is not None:
+            self._by_name = {obj.name: obj for obj in subindexes}
+            self._by_subindex = {obj.subindex: obj for obj in subindexes}
+        else:
+            self._by_name = {}
+            self._by_subindex = {}
+
+    def __getitem__(self, key: str | int) -> SubindexObject:
+        match key:
+            case str():
+                return self._by_name[key]
+            case int():
+                return self._by_subindex[key]
+
+    def __setitem__(self, key: str | int, value: SubindexObject) -> None:
+        match key:
+            case str():
+                self._by_name[key] = value
+                self._by_subindex[value.subindex] = value
+            case int():
+                self._by_subindex[key] = value
+                self._by_name[value.name] = value
+
+    def __delitem__(self, key: str | int) -> None:
+        match key:
+            case str():
+                value = self._by_name.pop(key)
+                del self._by_subindex[value.subindex]
+            case int():
+                value = self._by_subindex.pop(key)
+                del self._by_name[value.name]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._by_name)
+
+    def __len__(self) -> int:
+        return len(self._by_name)
 
     def to_entry(self) -> ODArray | ODRecord | ODVariable:
         match self.object_type:
@@ -440,7 +496,7 @@ class IndexObject(ConfigObject):
     def _to_array(self) -> ODArray:
         arr = ODArray(self.name, self.index)
         arr.description = self.description
-        for subindex in self.subindexes:
+        for subindex in self.values():
             arr.add_member(subindex.to_entry(self.index))
         arr.add_member(HighestSubindexSupported(arr))
         return arr
@@ -448,10 +504,30 @@ class IndexObject(ConfigObject):
     def _to_record(self) -> ODRecord:
         rec = ODRecord(self.name, self.index)
         rec.description = self.description
-        for subindex in self.subindexes:
+        for subindex in self.values():
             rec.add_member(subindex.to_entry(self.index))
         rec.add_member(HighestSubindexSupported(rec))
         return rec
+
+    def overlay(self, other: Self) -> None:
+        super().overlay(other)
+        # self.index shouldn't be overlaid, it wouldn't make sense. self.subindexes,
+        # self.generate_subindexes, and self._node_ids are InitVars and also shouldn't be overlaid
+        match self.object_type:
+            case 'variable':
+                # if the object_type narrows we should clear out any subindexes, but otherwise
+                # super() covers it.
+                self._by_name = {}
+                self._by_subndex = {}
+            case 'array' | 'record':
+                for subindex, sub in other._by_subindex.items():
+                    if subindex in self._by_subindex:
+                        # the name could change, but the subindex cannot
+                        obj = self._by_name.pop(sub.name)
+                        obj.overlay(sub)
+                    else:
+                        obj = deepcopy(sub)
+                    self[obj.subindex] = obj
 
     @classmethod
     def from_dict(
@@ -522,6 +598,14 @@ class Tpdo:
             'tpdo', self.num, COBId.pdo(node_id, self.num), transmission
         )
 
+    def overlay(self, other: Self) -> None:
+        if self.num != other.num:
+            raise ValueError("Attempting to overlay different TPDO number")
+
+        for f in fields(self):
+            if getattr(other, f.name) is not f.default:
+                setattr(self, f.name, getattr(other, f.name))
+
 
 @dataclass
 class Rpdo:
@@ -561,9 +645,17 @@ class Rpdo:
         cob_id = COBId.pdo(node_id, self.tpdo_num)
         return PDOCommunicationParameter('rpdo', self.num, cob_id, PDOTimer(None, None))
 
+    def overlay(self, other: Self) -> None:
+        if self.num != other.num:
+            raise ValueError("Attempting to overlay different TPDO number")
+
+        for f in fields(self):
+            if getattr(other, f.name) is not f.default:
+                setattr(self, f.name, getattr(other, f.name))
+
 
 @dataclass
-class CardConfig:
+class CardConfig(MutableMapping):
     """
     YAML card config.
 
@@ -596,7 +688,7 @@ class CardConfig:
 
     std_objects: list[str] = field(default_factory=list)
     """Standard object to include in OD."""
-    objects: list[IndexObject] = field(default_factory=list)
+    objects: InitVar[list[IndexObject] | None] = None
     """Unique card objects."""
     tpdos: list[Tpdo] = field(default_factory=list)
     """TPDOs for the card."""
@@ -604,17 +696,74 @@ class CardConfig:
     """RPDOs for the card."""
     fram: list[list[str]] = field(default_factory=list)
     """C3 only. List of index and subindex for the c3 to save the values of to F-RAM."""
+    _by_name: dict[str, IndexObject] = field(init=False)
+    _by_index: dict[int, IndexObject] = field(init=False)
 
-    def find_object(self, field: list[str]) -> IndexObject | SubindexObject:
-        for obj in self.objects:
-            if obj.name == field[0]:
-                if obj.object_type == 'variable':
-                    return obj
-                # else record or array
-                for sub in obj.subindexes:
-                    if sub.name == field[1]:
-                        return sub
-        raise ValueError(f'tpdo field {field} not found in config.objects')
+    def __post_init__(self, objects: list[IndexObject] | None) -> None:
+        if objects is None:
+            objects = []
+        self._by_name = {obj.name: obj for obj in objects}
+        self._by_index = {obj.index: obj for obj in objects}
+
+    def __getitem__(self, key: str | int) -> SubindexObject:
+        match key:
+            case str():
+                return self._by_name[key]
+            case int():
+                return self._by_index[key]
+
+    def __setitem__(self, key: str | int, value: SubindexObject) -> None:
+        match key:
+            case str():
+                self._by_name[key] = value
+                self._by_index[value.index] = value
+            case int():
+                self._by_index[key] = value
+                self._by_name[value.name] = value
+
+    def __delitem__(self, key: str | int) -> None:
+        match key:
+            case str():
+                value = self._by_name.pop(key)
+                del self._by_index[value.index]
+            case int():
+                value = self._by_index.pop(key)
+                del self._by_name[value.name]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._by_name)
+
+    def __len__(self) -> int:
+        return len(self._by_name)
+
+    def overlay(self, other: Self) -> None:
+        for obj in other.std_objects:
+            if obj not in self.std_objects:
+                self.std_objects.append(obj)
+
+        for index, obj in other.items():
+            try:
+                self[index].overlay(obj)
+            except KeyError:
+                self[index] = obj
+
+        tpdos = {o.num: o for o in self.tpdos}
+        for tpdo in other.tpdos:
+            try:
+                tpdos[tpdo.num].overlay(tpdo)
+            except KeyError:
+                self.tpdos.append(tpdo)
+
+        rpdos = {o.num: o for o in self.rpdos}
+        for rpdo in other.rpdos:
+            try:
+                rpdos[rpdo.num].overlay(rpdo)
+            except KeyError:
+                self.rpdos.append(rpdo)
+
+        for obj in other.fram:
+            if obj not in self.fram:
+                self.fram.append(obj)
 
     @classmethod
     def from_yaml(cls, path: Traversable, node_ids: dict[str, int]) -> Self:

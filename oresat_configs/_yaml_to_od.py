@@ -13,70 +13,6 @@ from .card_info import Card
 from .constants import Mission, __version__
 
 
-def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None:
-    """Deal with overlays."""
-    # overlay object
-    for obj in overlay_config.objects:
-        overlayed = False
-        for obj2 in card_config.objects:
-            if obj.index != obj2.index:
-                continue
-
-            obj2.name = obj.name
-            if obj.object_type == "variable":
-                obj2.data_type = obj.data_type
-                obj2.access_type = obj.access_type
-                obj2.high_limit = obj.high_limit
-                obj2.low_limit = obj.low_limit
-                obj2.default = obj.default
-            else:
-                for sub_obj in obj.subindexes:
-                    sub_overlayed = False
-                    for sub_obj2 in obj2.subindexes:
-                        if sub_obj.subindex == sub_obj2.subindex:
-                            sub_obj2.name = sub_obj.name
-                            sub_obj2.data_type = sub_obj.data_type
-                            sub_obj2.access_type = sub_obj.access_type
-                            sub_obj2.high_limit = sub_obj.high_limit
-                            sub_obj2.low_limit = sub_obj.low_limit
-                            sub_obj2.default = sub_obj.default
-                            overlayed = True
-                            sub_overlayed = True
-                            break  # obj was found, search for next one
-                    if not sub_overlayed:  # add it
-                        obj2.subindexes.append(deepcopy(sub_obj))
-            overlayed = True
-            break  # obj was found, search for next one
-        if not overlayed:  # add it
-            card_config.objects.append(deepcopy(obj))
-
-    # overlay tpdos
-    for overlay_tpdo in overlay_config.tpdos:
-        overlayed = False
-        for card_tpdo in card_config.tpdos:
-            if card_tpdo.num == overlay_tpdo.num:
-                card_tpdo.fields = overlay_tpdo.fields
-                card_tpdo.event_timer_ms = overlay_tpdo.event_timer_ms
-                card_tpdo.inhibit_time_ms = overlay_tpdo.inhibit_time_ms
-                card_tpdo.sync = overlay_tpdo.sync
-                overlayed = True
-                break
-        if not overlayed:  # add it
-            card_config.tpdos.append(deepcopy(overlay_tpdo))
-
-    # overlay rpdos
-    for overlay_rpdo in overlay_config.rpdos:
-        overlayed = False
-        for card_rpdo in card_config.rpdos:
-            if card_rpdo.num == overlay_rpdo.num:
-                card_rpdo.card = overlay_rpdo.card
-                card_rpdo.tpdo_num = overlay_rpdo.tpdo_num
-                overlayed = True
-                break
-        if not overlayed:  # add it
-            card_config.rpdos.append(deepcopy(overlay_rpdo))
-
-
 def _load_configs(
     mission: Mission,
     cards: dict[str, Card],
@@ -104,21 +40,19 @@ def _load_configs(
 
         common = common_configs[card.basetype]
         conf.std_objects = list(set(common.std_objects + conf.std_objects))
-        conf.objects.extend(common.objects)
+        conf.update(common)
         if name != "c3":
             conf.tpdos.extend(common.tpdos)
             conf.rpdos.extend(common.rpdos)
 
         if card.basename in mission.overlays:
-            overlay_config = CardConfig.from_yaml(mission.overlays[card.basename], node_ids)
-            overlay_configs(conf, overlay_config)
+            conf.overlay(CardConfig.from_yaml(mission.overlays[card.basename], node_ids))
 
         for std in conf.std_objects:
             obj = standard_objects[std]
             if std == "cob_id_emergency_message":
                 obj = dataclasses.replace(obj, default=0x80 + card.node_id)
-            conf.objects.append(obj)
-
+            conf[obj.name] = obj
 
         configs[name] = conf
 
@@ -134,7 +68,10 @@ def _load_configs(
             rpdo = Rpdo(len(c3.rpdos) + 1, name, tpdo.num)
             for field in tpdo.fields:
                 rpdo.fields.append([name, '_'.join(field)])
-                entry = conf.find_object(field)
+                if len(field) == 1:
+                    entry = conf[field[0]]
+                else:
+                    entry = conf[field[0]][field[1]]
                 subindexes.append(
                     SubindexObject(
                         name='_'.join(field),
@@ -154,13 +91,13 @@ def _load_configs(
                 )
             c3.rpdos.append(rpdo)
 
-        c3.objects.append(IndexObject(
+        c3[name] = IndexObject(
             name=name,
             description=f'{name} tpdo mapped data',
             index=0x5000 + node_ids[name],
             object_type='record',
             subindexes=subindexes
-        ))
+        )
 
     return configs
 
@@ -197,7 +134,7 @@ def _gen_od_db(
         od.device_information.LSS_supported = False
 
         # add card objects
-        for obj in config.objects:
+        for obj in config.values():
             if obj.index in od.indices:
                 raise ValueError(f"index 0x{obj.index:X} already in OD")
             od.add_object(obj.to_entry())
@@ -318,7 +255,7 @@ def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
     config = CardConfig.from_yaml(mission.common['fw'], {})
 
     # add card objects
-    for obj in config.objects:
+    for obj in config.values():
         if obj.index in od.indices:
             raise ValueError(f"index 0x{obj.index:X} already in OD")
         od.add_object(obj.to_entry())
