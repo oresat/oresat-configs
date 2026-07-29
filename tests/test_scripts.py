@@ -2,6 +2,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from oresat_configs import Mission, OreSatConfig
+from oresat_configs._yaml_to_od import _gen_fw_base_od
 from oresat_configs.scripts import (
     gen_dbc,
     gen_dcf,
@@ -31,7 +32,7 @@ class TestScripts:
             odc, odh = gen_fw_files.generate_canopennode(od)
             assert odc
             assert odh
-        odc, odh = gen_fw_files.generate_canopennode(config.fw_base_od)
+        odc, odh = gen_fw_files.generate_canopennode(_gen_fw_base_od(config.mission))
         assert odc
         assert odh
 

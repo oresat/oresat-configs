@@ -12,7 +12,6 @@ if not hasattr(yaml, "CLoader"):
 from ._yaml_to_od import (
     _gen_c3_beacon_defs,
     _gen_c3_fram_defs,
-    _gen_fw_base_od,
     _gen_od_db,
     _load_configs,
 )
@@ -52,7 +51,6 @@ class OreSatConfig:
         c3_od = self.od_db["c3"]
         self.beacon_def = _gen_c3_beacon_defs(c3_od, beacon_config)
         self.fram_def = _gen_c3_fram_defs(c3_od, self.configs["c3"])
-        self.fw_base_od = _gen_fw_base_od(self.mission)
 
     def name_from_alias(self, card: str, number: int = 1) -> str:
         """Find the canonical card name from a given alias.
