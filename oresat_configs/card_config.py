@@ -519,7 +519,7 @@ class IndexObject(MutableMapping, ConfigObject):
                 # if the object_type narrows we should clear out any subindexes, but otherwise
                 # super() covers it.
                 self._by_name = {}
-                self._by_subndex = {}
+                self._by_subindex = {}
             case 'array' | 'record':
                 for subindex, sub in other._by_subindex.items():
                     if subindex in self._by_subindex:
@@ -704,14 +704,14 @@ class CardConfig(MutableMapping):
         self._by_name = {obj.name: obj for obj in objects}
         self._by_index = {obj.index: obj for obj in objects}
 
-    def __getitem__(self, key: str | int) -> SubindexObject:
+    def __getitem__(self, key: str | int) -> IndexObject:
         match key:
             case str():
                 return self._by_name[key]
             case int():
                 return self._by_index[key]
 
-    def __setitem__(self, key: str | int, value: SubindexObject) -> None:
+    def __setitem__(self, key: str | int, value: IndexObject) -> None:
         match key:
             case str():
                 self._by_name[key] = value
@@ -760,9 +760,9 @@ class CardConfig(MutableMapping):
             except KeyError:
                 self.rpdos.append(rpdo)
 
-        for obj in other.fram:
-            if obj not in self.fram:
-                self.fram.append(obj)
+        for entry in other.fram:
+            if entry not in self.fram:
+                self.fram.append(entry)
 
     @classmethod
     def from_yaml(cls, path: Traversable, node_ids: dict[str, int]) -> Self:
