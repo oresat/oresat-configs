@@ -47,8 +47,8 @@ class OreSatConfig:
 
         beacon_config = BeaconConfig.from_yaml(self.mission.beacon)
         self.cards = cards_from_csv(self.mission.cards)
-        self.configs = _load_configs(self.mission, self.cards)
-        self.od_db = _gen_od_db(self.cards, beacon_config, self.configs)
+        self.configs = _load_configs(self.mission, beacon_config, self.cards)
+        self.od_db = _gen_od_db(self.cards, self.configs)
         c3_od = self.od_db["c3"]
         self.beacon_def = _gen_c3_beacon_defs(c3_od, beacon_config)
         self.fram_def = _gen_c3_fram_defs(c3_od, self.configs["c3"])
