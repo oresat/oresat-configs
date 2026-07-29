@@ -11,6 +11,7 @@ from canopen.objectdictionary import ODArray, ODRecord, ODVariable
 from canopen.objectdictionary.datatypes import DOMAIN, OCTET_STRING, UNICODE_STRING, VISIBLE_STRING
 
 from .. import Mission, OreSatConfig
+from .._yaml_to_od import _gen_fw_base_od
 
 
 def build_arguments(subparsers: _SubParsersAction) -> None:
@@ -591,7 +592,7 @@ def gen_fw_files(args: Namespace) -> None:
         raise SystemExit(f"'{args.dir_path}' already exists and is not a directory")
 
     if args.card.lower() == 'base':
-        od = config.fw_base_od
+        od = _gen_fw_base_od(config.mission)
     else:
         try:
             od = config.od_db[config.name_from_alias(args.card)]
