@@ -307,6 +307,12 @@ objects:
         default: 60
         unit: s
 
+      - subindex: 0xd
+        name: cfdp_seq_num
+        data_type: uint16
+        description: the sequence count used for new cfdp transactions originating on the satellite
+        access_type: rw
+
   - index: 0x4009
     name: opd
     object_type: record
@@ -837,3 +843,4 @@ fram:
   - [uhf, rx_bytes]
   - [uhf, rx_packets]
   - [tx_control, enable]
+  - [edl, cfdp_seq_num]
