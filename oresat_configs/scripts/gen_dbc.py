@@ -1,8 +1,7 @@
 """Generate a DBC file for SavvyCAN."""
 
-from argparse import Namespace
+from argparse import Namespace, _SubParsersAction
 from pathlib import Path
-from typing import Any
 
 from canopen.objectdictionary import REAL32, REAL64, UNSIGNED_TYPES, Record, Variable
 
@@ -118,7 +117,7 @@ TPDO_COMMS_INDEX_START = 0x1800
 TPDO_MAP_INDEX_START = 0x1A00
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this
@@ -152,7 +151,6 @@ def build_arguments(subparsers: Any) -> None:
 
 def generate_dbc(config: OreSatConfig) -> list[str]:
     """Generate CAN message/signal definitions for a dbc file."""
-
     lines: list[str] = [
         f'VERSION "{__version__}"',
         "",

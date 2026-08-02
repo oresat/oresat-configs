@@ -1,22 +1,17 @@
 """Generate a DCF for from an OreSat card's object directory."""
 
-from __future__ import annotations
-
-from datetime import datetime, timezone
+from argparse import Namespace, _SubParsersAction
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import cast
 
 import canopen
-
-if TYPE_CHECKING:
-    from argparse import Namespace
-
-    from canopen.objectdictionary import Variable
+from canopen.objectdictionary import Variable
 
 from .. import Mission, OreSatConfig
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this
@@ -50,20 +45,19 @@ def build_arguments(subparsers: Any) -> None:
 
 
 def generate_dcf(od: canopen.ObjectDictionary) -> tuple[str, list[str]]:
-    """Save an od/dcf file
+    """Save an od/dcf file.
 
     Parameters
     ----------
     od: canopen.ObjectDictionary
         od data structure to save as file
     """
-
     lines = []
     dev_info = od.device_information
     assert dev_info.product_name is not None
     file_name = dev_info.product_name + ".dcf"
     file_name = file_name.lower().replace(" ", "_")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # file info seciton
     lines.append("[FileInfo]")

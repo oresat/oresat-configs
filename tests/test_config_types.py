@@ -1,7 +1,7 @@
 """Unit tests for ensuring yaml config files match up with corresponding dataclasses"""
 
 from importlib import abc, resources
-from typing import Any
+from typing import TypeAlias
 
 from dacite import Config, from_dict
 from yaml import CLoader, load
@@ -9,6 +9,9 @@ from yaml import CLoader, load
 from oresat_configs import Mission, _yaml_to_od, base
 from oresat_configs.beacon_config import BeaconConfig
 from oresat_configs.card_config import CardConfig, IndexObject
+
+ParsedYaml: TypeAlias = dict[str, "YamlValue"]
+YamlValue: TypeAlias = str | float | ParsedYaml
 
 
 class TestConfigTypes:
@@ -20,7 +23,7 @@ class TestConfigTypes:
     """
 
     @staticmethod
-    def load_yaml(path: abc.Traversable) -> Any:
+    def load_yaml(path: abc.Traversable) -> ParsedYaml:
         """Helper that wraps loading yaml from a path"""
         with path.open() as f:
             config = f.read()
@@ -45,4 +48,5 @@ class TestConfigTypes:
         """Tests the standard objects config. Each entry gets its own IndexObject"""
         path = _yaml_to_od.STD_OBJS_FILE_NAME
         for data in self.load_yaml(path):
+            assert isinstance(data, dict)
             from_dict(IndexObject, data, Config(strict=True))

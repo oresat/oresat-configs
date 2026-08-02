@@ -1,4 +1,8 @@
-from __future__ import annotations
+"""Specialized classes for handling specific Object Dictionary types.
+
+These are all standard entries as mentioned in CiA-301 and are fully compatible with the upstream
+canopen-python library but given a more accessible interface for creating and retrieving.
+"""
 
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -14,7 +18,7 @@ from canopen.objectdictionary import (
 
 
 class HighestSubindexSupported(ODVariable):
-    '''Highest subindex supported in a particular complex data type.
+    """Highest subindex supported in a particular complex data type.
 
     Intended to be placed at sub-index 0 of records and arrays. The standard indicates that some
     amount of discovery may be enabled by this by attempting to read subindex 0 of an arbitrary
@@ -29,7 +33,7 @@ class HighestSubindexSupported(ODVariable):
     - 7.4.7.1 - Description of this variable.
     - 7.4.7.{1,3,4,5,6) - Default complex types this is used in.
     - 7.4.7.2 - Not technically this type but very similar.
-    '''
+    """
 
     def __init__(self, entry: ODArray | ODRecord) -> None:
         # FIXME: should be "highest_subindex_supported" but isn't for backward compatibility
@@ -40,7 +44,7 @@ class HighestSubindexSupported(ODVariable):
 
 
 class COBId(ODVariable):
-    '''COB-ID (Communication Object ID).
+    """COB-ID (Communication Object ID).
 
     A COB-ID is a CAN-ID with two extra bits of information, associated with a specific COB. Not
     every COBhas the same interpretation of the extra top two bits, consult the spec for meaning.
@@ -56,7 +60,7 @@ class COBId(ODVariable):
     - 7.5.2.33: SDO client
     - 7.5.2.35: RPDO
     - 7.5.2.37: TPDO
-    '''
+    """
 
     def __init__(self, index: int, subindex: int, cob_id: int) -> None:
         super().__init__("cob_id", index, subindex)
@@ -122,7 +126,7 @@ class PDOTimer:
 
 
 class PDOCommunicationParameter(ODRecord):
-    '''The pre-defined DEFSTRUCT PDO_COMMUNICATON_PARAMETER.
+    """The pre-defined DEFSTRUCT PDO_COMMUNICATON_PARAMETER.
 
     Communication parameters describe when the associated PDO is transmitted.
 
@@ -131,7 +135,7 @@ class PDOCommunicationParameter(ODRecord):
     - 7.4.8.1: PDO communication parameter record layout
     - 7.5.2.35: RPDO communication parameter value definitions
     - 7.5.2.37: TPDO communication parameter value definitions
-    '''
+    """
 
     INDEX_BASE: Final[dict[Literal['tpdo', 'rpdo'], int]] = {
         'rpdo': 0x1400,
@@ -194,7 +198,7 @@ class PDOCommunicationParameter(ODRecord):
 
 
 class PDOMappedObject(ODVariable):
-    '''A single PDO Mapping.
+    """A single PDO Mapping.
 
     An entry of a PDOMappingParameter pointing to the object in the ObjectDictionary that this PDO
     is associated with.
@@ -202,7 +206,7 @@ class PDOMappedObject(ODVariable):
     See CiA-301:
     - 7.5.2.36: RPDOs
     - 7.5.2.38: TPDOs
-    '''
+    """
 
     def __init__(self, index: int, subindex: int, mapped: ODVariable) -> None:
         super().__init__(f"mapping_object_{subindex}", index, subindex)
@@ -233,7 +237,7 @@ class PDOMappedObject(ODVariable):
 
 
 class PDOMappingParameter(ODRecord):
-    '''PDO Mapping parameters.
+    """PDO Mapping parameters.
 
     A table for a PDO that maps that PDO with the related objects in the ObjectDictionary. Every
     PDO should have all entries exist somewhere in the ObjectDictionary.
@@ -241,7 +245,7 @@ class PDOMappingParameter(ODRecord):
     See CiA-301:
     - 7.5.2.36: RPDOs
     - 7.5.2.38: TPDOs
-    '''
+    """
 
     INDEX_BASE: Final[dict[Literal['tpdo', 'rpdo'], int]] = {
         'rpdo': 0x1600,
