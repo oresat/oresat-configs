@@ -1,6 +1,4 @@
-"""OreSat OD database"""
-
-from __future__ import annotations
+"""OreSat OD database."""
 
 # Checks that pyyaml is installed correctly. For performance reasons it must use the libyaml C
 # bindings. To use them both libyaml must be installed on the local system, and pyyaml must have
@@ -31,13 +29,14 @@ class OreSatConfig:
     """All the configs for an OreSat mission."""
 
     def __init__(self, mission: Mission | str | None = None) -> None:
-        """The parameter mission may be:
-        - a string, either short or long mission name ('0', 'OreSat0.5', ...)
-        - a Mission (ORESAT0, ...)
-        - Omitted or None, in which case Mission.default() is chosen
+        """Load all the associated configs from their various files.
 
-        It will be used to derive the appropriate Mission, the collection of
-        constants associated with a specific oresat mission.
+        Parameters
+        ----------
+        mission:
+         - A string, either short or long mission name ('0', 'OreSat0.5', ...)
+         - A Mission (ORESAT0, ...)
+         - Omitted or None, in which case Mission.default() is chosen
         """
         if mission is None:
             self.mission = Mission.default()
@@ -60,7 +59,7 @@ class OreSatConfig:
         self.fw_base_od = _gen_fw_base_od(self.mission)
 
     def name_from_alias(self, card: str, number: int = 1) -> str:
-        '''Finds the canonical card name from a given alias.
+        """Find the canonical card name from a given alias.
 
         Intended for the --card option in scripts, this will take a wide array of names and return
         the corresponding key that will find that card's config in od_db. For cards with number
@@ -87,7 +86,7 @@ class OreSatConfig:
         ------
         KeyError
             If no suitable name is found for the given alias.
-        '''
+        """
         card_aliases = {name: name for name in self.cards}
         # FIXME: should be part of yaml. It's a big change to wire that up though
         # FIXME: should only include cards from current mission. This isn't technically bad

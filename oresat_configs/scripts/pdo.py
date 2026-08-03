@@ -1,15 +1,14 @@
-"""Tools for working with PDOs"""
+"""Tools for working with PDOs."""
 
 import time
-from argparse import Namespace
-from typing import Any
+from argparse import Namespace, _SubParsersAction
 
 import canopen
 
 from .. import Mission, OreSatConfig
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this
@@ -71,7 +70,7 @@ typenames = {
 
 
 def transmission_type(t: int) -> str:
-    """Retreives a name for a TPDO Transmission type
+    """Retrieve a name for a TPDO Transmission type.
 
     Subindex 2 of a PDO communication parameter record. See CiA-301 table 72.
     """
@@ -91,7 +90,7 @@ def transmission_type(t: int) -> str:
 
 
 def print_map(m: canopen.pdo.base.Map) -> None:
-    """Prints out a received PDO.
+    """Print out a received PDO.
 
     Which from this library means a PDO Mapping
     """
@@ -104,7 +103,7 @@ def print_map(m: canopen.pdo.base.Map) -> None:
 
 
 def listen(bus: str, od: canopen.ObjectDictionary) -> None:
-    """Listens for PDOs from the given node, formats and prints them to stdout"""
+    """Listen for PDOs from the given node, formats and prints them to stdout."""
     network = canopen.Network()
     network.connect(channel=bus, bustype="socketcan")
 
@@ -123,8 +122,7 @@ def listen(bus: str, od: canopen.ObjectDictionary) -> None:
 
 
 def listpdos(od: canopen.ObjectDictionary) -> None:
-    """Prints PDO communication and associated mapping parameters for the given node"""
-
+    """Print PDO communication and associated mapping parameters for the given nodei."""
     network = canopen.Network()
     node = network.add_node(0, od)
     node.tpdo.read(from_od=True)
@@ -135,8 +133,7 @@ def listpdos(od: canopen.ObjectDictionary) -> None:
 
 
 def pdo_main(args: Namespace) -> None:
-    """The utility for managing PDOs"""
-
+    """List or Listen for PDOs."""
     config = OreSatConfig(args.oresat)
     od = config.od_db[config.name_from_alias(args.card)]
 

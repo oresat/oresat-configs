@@ -1,17 +1,17 @@
 """Generate XTCE for the beacon."""
 
 import xml.etree.ElementTree as ET
-from argparse import Namespace
-from datetime import datetime, timezone
+from argparse import Namespace, _SubParsersAction
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import canopen
 
 from .. import Mission, OreSatConfig
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this
@@ -79,8 +79,7 @@ DT_LEN = {
 
 
 def make_obj_name(obj: canopen.objectdictionary.Variable) -> str:
-    """get obj name."""
-
+    """Get obj name."""
     name = ""
     if obj.index < 0x5000:
         name += "c3_"
@@ -98,7 +97,6 @@ def make_obj_name(obj: canopen.objectdictionary.Variable) -> str:
 
 def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
     """Make xtce data type name."""
-
     assert obj.data_type is not None
     type_name = CANOPEN_TO_XTCE_DT[obj.data_type]
     if obj.name in ["unix_time", "updater_status"]:
@@ -125,7 +123,6 @@ def make_dt_name(obj: canopen.objectdictionary.Variable) -> str:
 
 def generate_xtce(config: OreSatConfig) -> ET.ElementTree:
     """Write beacon configs to a xtce file."""
-
     root = ET.Element(
         "SpaceSystem",
         attrib={
@@ -147,7 +144,7 @@ def generate_xtce(config: OreSatConfig) -> ET.ElementTree:
             "validationStatus": "Working",
             "classification": "NotClassified",
             "version": f'{beacon["revision"].value}.0',
-            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "date": datetime.now(UTC).strftime("%Y-%m-%d"),
         },
     )
     author_set = ET.SubElement(header, "AuthorSet")

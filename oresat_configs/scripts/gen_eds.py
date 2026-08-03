@@ -1,6 +1,7 @@
-from argparse import Namespace
+"""Generates an EDS of the OreSat OD suitable for consumption by EDSEditor."""
+
+from argparse import Namespace, _SubParsersAction
 from pathlib import Path
-from typing import Any
 
 from canopen import ObjectDictionary, export_od
 from canopen.objectdictionary import ODArray, ODVariable
@@ -10,7 +11,7 @@ from .. import Mission, OreSatConfig
 from ..card_config import Rpdo
 
 
-def build_arguments(subparsers: Any) -> None:
+def build_arguments(subparsers: _SubParsersAction) -> None:
     """Build command line arguments for this script.
 
     This function will be invoked by scripts.main to configure command line arguments for this
@@ -65,7 +66,7 @@ def gen_eds(args: Namespace) -> None:
 
 
 def fixup_od(od: ObjectDictionary) -> None:
-    '''Fixes to our OD to support EDSEditor/CANopenNode 1.3/2.0.'''
+    """Fix our OD to support EDSEditor/CANopenNode 1.3/2.0."""
     d = od.device_information
     if d.nr_of_RXPDO is None:
         raise SystemExit("OD incomplete (missing RXPDO count)")

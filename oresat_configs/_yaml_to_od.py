@@ -1,32 +1,23 @@
 """Convert OreSat configs to ODs."""
 
-from __future__ import annotations
-
 import dataclasses
 from copy import deepcopy
 from importlib import abc, resources
-from typing import TYPE_CHECKING
 
-import canopen
-from canopen import ObjectDictionary
-from canopen.objectdictionary import Array, Record, Variable
+from canopen.objectdictionary import ObjectDictionary, ODArray, ODRecord, ODVariable
 from yaml import CLoader, load
 
 from . import base
+from .beacon_config import BeaconConfig
 from .card_config import CardConfig, IndexObject, Rpdo, SubindexObject
+from .card_info import Card
 from .constants import Mission, __version__
-
-if TYPE_CHECKING:
-    from .beacon_config import BeaconConfig
-    from .card_info import Card
-
 
 STD_OBJS_FILE_NAME = resources.files("oresat_configs") / "standard_objects.yaml"
 
 
 def overlay_configs(card_config: CardConfig, overlay_config: CardConfig) -> None:
-    """deal with overlays"""
-
+    """Deal with overlays."""
     # overlay object
     for obj in overlay_config.objects:
         overlayed = False
@@ -94,7 +85,6 @@ def _load_configs(
     overlays: dict[str, abc.Traversable],
 ) -> dict[str, CardConfig]:
     """Generate all ODs for a OreSat mission."""
-
     standard_objects = {}
     with resources.as_file(STD_OBJS_FILE_NAME) as path, path.open() as f:
         for raw in load(f, Loader=CLoader):
@@ -192,7 +182,7 @@ def _gen_od_db(
 
     # make od with common and card objects and tpdos
     for name, config in configs.items():
-        od = canopen.ObjectDictionary()
+        od = ObjectDictionary()
         od.bitrate = 1_000_000  # bps
         od.node_id = cards[name].node_id
         od.device_information.allowed_baudrates = {1000}
@@ -233,19 +223,19 @@ def _gen_od_db(
 
         # set specific obj defaults
         versions = od["versions"]
-        assert isinstance(versions, Record)
+        assert isinstance(versions, ODRecord)
         # FIXME: canopen is still working out their type annotations, default should be of type
         #        Union[int, str, bytes, None] but is Optional[int]. Remove ignore when upstream
         #        fixes it.
         versions["configs_version"].default = __version__  # type: ignore[assignment]
         satellite_id = od["satellite_id"]
-        assert isinstance(satellite_id, Variable)
+        assert isinstance(satellite_id, ODVariable)
         satellite_id.default = mission.id
         for sat in Mission:
             satellite_id.value_descriptions[sat.id] = sat.name.lower()
         if name == "c3":
             beacon = od["beacon"]
-            assert isinstance(beacon, Record)
+            assert isinstance(beacon, ODRecord)
             beacon["revision"].default = beacon_def.revision
             beacon["dest_callsign"].default = beacon_def.ax25.dest_callsign  # type: ignore[assignment]
             beacon["dest_ssid"].default = beacon_def.ax25.dest_ssid
@@ -256,7 +246,7 @@ def _gen_od_db(
             beacon["response"].default = beacon_def.ax25.response
             beacon["pid"].default = beacon_def.ax25.pid
             flight_mode = od["flight_mode"]
-            assert isinstance(flight_mode, Variable)
+            assert isinstance(flight_mode, ODVariable)
             flight_mode.access_type = "ro"
 
         od_db[name] = od
@@ -264,7 +254,7 @@ def _gen_od_db(
     # set all object values to its default value
     for od in od_db.values():
         for entry in od.values():
-            if not isinstance(entry, Variable):
+            if not isinstance(entry, ODVariable):
                 for subentry in entry.values():
                     subentry.value = subentry.default
             else:
@@ -273,9 +263,8 @@ def _gen_od_db(
     return od_db
 
 
-def _gen_c3_fram_defs(c3_od: ObjectDictionary, config: CardConfig) -> list[Variable]:
+def _gen_c3_fram_defs(c3_od: ObjectDictionary, config: CardConfig) -> list[ODVariable]:
     """Get the list of objects in saved to fram."""
-
     fram_objs = []
 
     for fields in config.fram:
@@ -283,18 +272,17 @@ def _gen_c3_fram_defs(c3_od: ObjectDictionary, config: CardConfig) -> list[Varia
         if len(fields) >= 1:
             obj = c3_od[fields[0]]
         if len(fields) == 2:
-            assert isinstance(obj, (Record, Array))
+            assert isinstance(obj, (ODRecord, ODArray))
             obj = obj[fields[1]]
         if obj is not None:
-            assert isinstance(obj, Variable)
+            assert isinstance(obj, ODVariable)
             fram_objs.append(obj)
 
     return fram_objs
 
 
-def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> list[Variable]:
+def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> list[ODVariable]:
     """Get the list of objects in the beacon from OD."""
-
     beacon_objs = []
 
     for fields in beacon_def.fields:
@@ -302,19 +290,18 @@ def _gen_c3_beacon_defs(c3_od: ObjectDictionary, beacon_def: BeaconConfig) -> li
         if len(fields) >= 1:
             obj = c3_od[fields[0]]
         if len(fields) == 2:
-            assert isinstance(obj, (Record, Array))
+            assert isinstance(obj, (ODRecord, ODArray))
             obj = obj[fields[1]]
         if obj is not None:
-            assert isinstance(obj, Variable)
+            assert isinstance(obj, ODVariable)
             beacon_objs.append(obj)
 
     return beacon_objs
 
 
-def _gen_fw_base_od(mission: Mission) -> canopen.ObjectDictionary:
+def _gen_fw_base_od(mission: Mission) -> ObjectDictionary:
     """Generate all ODs for a OreSat mission."""
-
-    od = canopen.ObjectDictionary()
+    od = ObjectDictionary()
     od.bitrate = 1_000_000  # bps
     od.node_id = 0x7C
     od.device_information.allowed_baudrates = {1000}  # kpbs
@@ -369,13 +356,13 @@ def _gen_fw_base_od(mission: Mission) -> canopen.ObjectDictionary:
 
     # set specific obj defaults
     versions = od["versions"]
-    assert isinstance(versions, Record)
+    assert isinstance(versions, ODRecord)
     # FIXME: canopen is still working out their type annotations, default should be of type
     #        Union[int, str, bytes, None] but is Optional[int]. Remove ignore when upstream
     #        fixes it.
     versions["configs_version"].default = __version__  # type: ignore[assignment]
     satellite_id = od["satellite_id"]
-    assert isinstance(satellite_id, Variable)
+    assert isinstance(satellite_id, ODVariable)
     satellite_id.default = mission.id
 
     return od

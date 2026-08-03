@@ -28,7 +28,6 @@ OD_DATA_TYPES = {
 
 def gen_beacon_rst(config: OreSatConfig, url: str) -> list[str]:
     """Genetate a rst file for a beacon definition."""
-
     title = "Beacon Definition"
     header_title = "AX.25 Header"
     lines = [
@@ -193,7 +192,6 @@ def gen_beacon_rst(config: OreSatConfig, url: str) -> list[str]:
 
 def gen_beacon_rst_files() -> None:
     """Generate all beacon rst files."""
-
     docs_dir = Path(__file__).parent.parent
     for mission in Mission:
         url = (
