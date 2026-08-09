@@ -307,7 +307,7 @@ objects:
         default: 60
         unit: s
 
-      - subindex: 0xd
+      - subindex: 0xe
         name: clcw_interval
         data_type: uint32
         description: interval between sending clcw frames
