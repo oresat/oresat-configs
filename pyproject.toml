@@ -76,6 +76,11 @@ ignore = [
 
     # Re-enable soon
     "S101",  # assert - Should be eventually fixed but for now helps with type checking
+    "ANN401",  # any-type - Should be eventually fixed but for now helps with type checking
+    "D",  # pydocstyle - Should be turned back on but documentation is a large task
+
+    "CPY001",  # missing-copyright-notice - repository license should be enough
+
     "D101",  # undocumented-public-class
     "D102",  # undocumented-public-method
     "D104",  # undocumented-public-package
