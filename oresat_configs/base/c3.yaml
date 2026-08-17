@@ -313,6 +313,14 @@ objects:
         description: the sequence count used for new cfdp transactions originating on the satellite
         access_type: rw
 
+      - subindex: 0xe
+        name: clcw_interval
+        data_type: uint32
+        description: interval between sending clcw frames
+        access_type: rw
+        default: 1000
+        unit: ms
+
   - index: 0x4009
     name: opd
     object_type: record
