@@ -82,7 +82,7 @@ objects:
         data_type: str
         description: card hw version
         access_type: const
-        default: "0.0"
+        default: "0.0.0"
 
       - subindex: 0x2
         name: configs_version
@@ -92,13 +92,18 @@ objects:
         default: "0.0.0"
 
       # subindex 0x3 reserved
+      - subindex: 0x3
+        name: reserved
+        data_type: uint8
+        description: placeholder
+        access_type: const
 
       - subindex: 0x4
         name: fw_version
         data_type: str
         description: app fw version
         access_type: const
-        default: "0.0.0"
+        default: "0.0.0-0000000"
 
   - index: 0x3003
     name: system
@@ -117,8 +122,25 @@ objects:
         access_type: wo
 
       # subindex 0x2 reserved for storage_percent
+      - subindex: 0x2
+        name: storage_percent
+        data_type: uint8
+        description: placeholder
+        access_type: const
+
       # subindex 0x3 reserved for ram_percent
+      - subindex: 0x3
+        name: ram_percent
+        data_type: uint8
+        description: placeholder
+        access_type: const
+
       # subindex 0x4 reserved for unix_time
+      - subindex: 0x4
+        name: unix_time
+        data_type: uint32
+        description: placeholder
+        access_type: const
 
       - subindex: 0x5
         name: uptime
@@ -128,6 +150,11 @@ objects:
         unit: s
 
       # subindex 0x6 reserved for power_cycles
+      - subindex: 0x6
+        name: power_cycles
+        data_type: uint16
+        description: placeholder
+        access_type: const
 
       - subindex: 0x7
         name: temperature
@@ -145,6 +172,11 @@ objects:
         unit: V
 
         # subindex 0x9 reserved for boot_select
+      - subindex: 0x9
+        name: boot_select
+        data_type: uint8
+        description: placeholder
+        access_type: const
 
   # index 0x3004 reserved
   # index 0x3005 reserved
