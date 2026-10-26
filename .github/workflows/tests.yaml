@@ -87,7 +87,7 @@ jobs:
         oresat-configs od c3 > /dev/null
         oresat-configs kaitai
         oresat-configs xtce
-        xmllint --noout --schema tests/SpaceSystem.xsd oresat1.xtce
+        XML_CATALOG_FILES=./tests/xsd/catalog.xml xmllint --noout --schema tests/xsd/SpaceSystem.xsd oresat1.xtce
         oresat-configs cards > /dev/null
         oresat-configs pdo c3 --list > /dev/null
         oresat-configs eds c3

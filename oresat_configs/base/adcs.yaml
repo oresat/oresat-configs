@@ -8,6 +8,7 @@ objects:
         data_type: int16
         description: x-axis rate
         access_type: ro
+        scale_factor: 0.001
         unit: deg/s
 
       - subindex: 0x2
@@ -15,6 +16,7 @@ objects:
         data_type: int16
         description: y-axis rate
         access_type: ro
+        scale_factor: 0.001
         unit: deg/s
 
       - subindex: 0x3
@@ -22,6 +24,7 @@ objects:
         data_type: int16
         description: z-axis rate
         access_type: ro
+        scale_factor: 0.001
         unit: deg/s
 
       - subindex: 0x4
