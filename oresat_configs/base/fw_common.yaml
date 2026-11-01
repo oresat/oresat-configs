@@ -23,13 +23,12 @@ objects:
       subindexes: fixed_length
       length: 1  # can be bewteen 1 and 254
       data_type: domain
-      access_type: rw
+      access_type: wo
 
   - index: 0x1f51
     name: program_control
     object_type: array
     description: MCUboot program control
-    access_type: rw
     generate_subindexes:
       name: control
       subindexes: fixed_length
@@ -46,19 +45,18 @@ objects:
       subindexes: fixed_length
       length: 1  # can be bewteen 1 and 254
       data_type: uint32
-      access_type: rw
+      access_type: ro
 
   - index: 0x1f57
     name: flash_status_identification
     object_type: array
     description: MCUboot flash status identification
-    access_type: rw
     generate_subindexes:
       name: id
       subindexes: fixed_length
       length: 1  # can be bewteen 1 and 254
       data_type: uint32
-      access_type: rw
+      access_type: ro
 
   - index: 0x3000
     name: satellite_id
