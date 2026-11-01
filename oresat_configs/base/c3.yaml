@@ -651,7 +651,7 @@ objects:
         data_type: float32
         description: the orbital period, in seconds
         access_type: rw
-        default: 1.0
+        default: 5400.0
         unit: s
 
       - subindex: 0x5
