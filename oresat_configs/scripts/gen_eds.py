@@ -4,8 +4,8 @@ from argparse import Namespace, _SubParsersAction
 from pathlib import Path
 
 from canopen import ObjectDictionary, export_od
-from canopen.objectdictionary import ODArray, ODVariable
-from canopen.objectdictionary.datatypes import OCTET_STRING, UNSIGNED8, UNSIGNED32
+from canopen.objectdictionary import ODArray, ODRecord, ODVariable
+from canopen.objectdictionary.datatypes import OCTET_STRING, UNSIGNED8, UNSIGNED32, VISIBLE_STRING
 
 from .. import Mission, OreSatConfig
 from ..card_config import Rpdo
@@ -54,6 +54,7 @@ def gen_eds(args: Namespace) -> None:
         fixup_od(od)
         file = od.device_information.product_name + ".eds"
         file = file.lower().replace(" ", "_")
+        args.dir_path.mkdir(parents=True, exist_ok=True)
         path = args.dir_path / file
         print(f"Writing od to {path}")
         export_od(od, str(path))
@@ -190,3 +191,28 @@ def fixup_od(od: ObjectDictionary) -> None:
     errorstatus.default = bytes(10)  # type: ignore[assignment]
     errorstatus.value = bytes(10)  # type: ignore[assignment]
     od.add_object(errorstatus)
+
+    # CANopenNode 1.3/2.0 doesn't expect holes in records and EDSEditor
+    # generates all the fields contiguously, ignoring any missing subindexes.
+    # At runtime it'll access the wrong index or just segfault if we don't fill
+    # in the missing subindexes with placeholders here.
+    for obj in od.values():
+        if isinstance(obj, ODRecord):
+            for sub in range(obj["highest_index_supported"].default + 1):  # type: ignore[operator]
+                if sub not in obj:
+                    holder = ODVariable(f"placeholder_{sub}", obj.index, sub)
+                    holder.data_type = UNSIGNED8
+                    holder.default = 0
+                    holder.value = 0
+                    holder.access_type = "const"
+                    obj.add_member(holder)
+
+    # EDSEditor trims strings to their minimum length, including stripping
+    # whitespace (and NULs, so we can't do something clever), here we add some
+    # padding back up to 32 bytes so that firmware can add to it.
+    versions = od['versions']
+    assert isinstance(versions, ODRecord)
+    for sub in versions.values():
+        if sub.data_type == VISIBLE_STRING:
+            sub.default += (31 - len(sub.default)) * " " + "|"
+            sub.value += (31 - len(sub.value)) * " " + "|"
